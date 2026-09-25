@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Basic Engine Hub</title>
+  <meta name="description" content="Menú de proyectos de Basic Engine Hub: estudio y perfil de Alvaro_Games19, reproducibles en TurboWarp.">
+  <link rel="stylesheet" href="web/style.css">
+  <script src="web/app.js" defer></script>
+</head>
+<body>
+  <header class="app-header">
+    <h1 class="app-title">Basic Engine Hub</h1>
+    <div class="header-actions">
+      <input id="search" class="search" type="search"
+             placeholder="Buscar proyectos…" autocomplete="off"
+             aria-label="Buscar proyectos">
+      <button id="refresh" class="btn" type="button">Actualizar</button>
+    </div>
+  </header>
+
+  <p id="status" class="status" role="status">Cargando proyectos…</p>
+
+  <main id="grid" class="grid" aria-live="polite"></main>
+
+  <div id="error" class="error hidden">
+    <p id="error-text" class="error-text"></p>
+    <button id="retry" class="btn btn-primary" type="button">Reintentar</button>
+  </div>
+
+  <div id="player-overlay" class="overlay hidden">
+    <div class="overlay-top">
+      <button id="back" class="btn" type="button">← Volver al menú</button>
+    </div>
+    <div id="player-loading" class="player-loading" hidden>
+      <span class="spinner" aria-hidden="true"></span>
+      <span>Cargando proyecto…</span>
+    </div>
+    <iframe id="player" title="Reproductor del proyecto"
+            allow="autoplay; fullscreen" allowfullscreen></iframe>
+  </div>
+</body>
+</html>

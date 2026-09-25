@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Basic Engine Hub Player</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; width: 100%; height: 100%; background: #FF4D4D;
+               color: #e8e8e8; font-family: system-ui, -apple-system,
+               "Segoe UI", sans-serif; overflow: hidden; }
+  #player-root { position: fixed; inset: 0; }
+  #player-root:fullscreen { width: 100vw; height: 100vh; }
+  #stage { position: fixed; inset: 0; display: grid; place-items: center; }
+  #overlay { position: fixed; inset: 0; z-index: 45; display: grid;
+             place-items: center; background: rgba(16,18,22,0.55);
+             transition: opacity 0.15s ease; }
+  #overlay.hidden { opacity: 0; pointer-events: none; }
+  #overlay-text { padding: 14px 22px; border: 1px solid #2b2f36;
+                  border-radius: 10px; background: #181c22; font-size: 15px;
+                  text-align: center; }
+  #fs-exit { position: fixed; top: 12px; left: 12px; z-index: 40; width: 34px;
+             height: 34px; border-radius: 17px; border: 1px solid #2b2f36;
+             background: #181c22; color: #e8e8e8; font-size: 15px;
+             cursor: pointer; display: none; align-items: center;
+             justify-content: center; }
+  body.fs-active #fs-exit { display: flex; }
+  #clones-panel { position: fixed; left: 12px; top: 50%; transform: translateY(-50%);
+                  z-index: 15; width: 220px; max-height: 75%; overflow-y: auto;
+                  border: 1px solid #2b2f36; border-radius: 10px;
+                  background: #181c22; padding: 10px; font-size: 12px; }
+  #clones-panel.hidden { display: none; }
+  .clone-group-title { font-weight: 600; color: #ff8c42; margin: 6px 0 2px; }
+  .clone-row { color: #cfd3da; font-family: ui-monospace, monospace; padding: 1px 0; }
+  .clone-empty { color: #9aa0a8; text-align: center; padding: 8px 0; }
+</style>
+</head>
+<body>
+<div id="player-root">
+  <div id="stage"></div>
+  <button id="fs-exit" type="button" aria-label="Salir de pantalla completa" title="Salir de pantalla completa">✕</button>
+  <div id="clones-panel" class="hidden"></div>
+  <div id="overlay"><div id="overlay-text">Select a project</div></div>
+</div>
+<script src="vendor/scaffolding-with-music.js"></script>
+<script>
+"use strict";
+
+// UI language: read from the query string (?lang=es|en); the desktop shell
+// switches it live through window.setPlayerLanguage(lang).
+let uiLang = new URLSearchParams(location.search).get("lang") === "en" ? "en" : "es";
+
+// Web-owned UI strings. Project titles, sprite names and numbers stay raw.
+const UI = {
+  es: {
+    selectProject: "Elige un proyecto",
+    loadingProject: "Cargando proyecto…",
+    errorPrefix: "Error: ",
+    bundleMissing: "Falta el paquete de Scaffolding",
+    noActiveClones: "Sin clones activos",
+    noProject: "Sin proyecto",
+    fsExit: "Salir de pantalla completa"
+  },
+  en: {
+    selectProject: "Select a project",
+    loadingProject: "Loading project…",
+    errorPrefix: "Error: ",
+    bundleMissing: "Scaffolding bundle missing",
+    noActiveClones: "No active clones",
+    noProject: "No project",
+    fsExit: "Exit fullscreen"
+  }
+};
+
+function uiText(key, ...args) {
+  const dict = UI[uiLang] || UI.es;
+  return Object.prototype.hasOwnProperty.call(dict, key) ? dict[key] : key;
+}
+
+// Apply the initial static texts so a non-default language never flashes.
+const overlayTextEl = document.getElementById("overlay-text");
+if (overlayTextEl) overlayTextEl.textContent = uiText("selectProject");
+const fsExitEl0 = document.getElementById("fs-exit");
+if (fsExitEl0) {
+  fsExitEl0.setAttribute("aria-label", uiText("fsExit"));
+  fsExitEl0.title = uiText("fsExit");
+}
+
+let scaffolding = null;
+let storage = null;
+
+function showOverlay(text) {
+  const el = document.getElementById("overlay-text");
+  if (el) el.textContent = text;
+  document.getElementById("overlay").classList.remove("hidden");
+}
+
+function hideOverlay() {
+  document.getElementById("overlay").classList.add("hidden");
+}
+
+// TurboWarp-compatible player config. Edit THIS object to change behavior;
+// the marker is kept so the object is recognizable. Notes:
+//  - framerate: TurboWarp clamps to max 250.
+//  - hq: high-quality pen rendering.
+//  - runtimeOptions.maxClones: Infinity = unlimited clones; miscLimits: false
+//    = remove list/text/etc. limits; fencing: false = remove sprite fences.
+const twconfig = {
+  "framerate": 250,
+  "runtimeOptions": {"maxClones": Infinity, "miscLimits": false, "fencing": false},
+  "hq": true,
+  "width": 640
+}; // _twconfig_
+
+function applyTwConfig() {
+  // Apply the twconfig literal generically after setup(). setup() enables
+  // compatibility mode (30 FPS), so this must run after setup(). Every call
+  // is guarded so a future bundle that renames an API degrades gracefully.
+  const vm = scaffolding && scaffolding.vm;
+  if (!vm) return;
+  // Baseline TurboWarp settings (interpolation + warp timer) stay active;
+  // the literal above overrides only the keys it declares.
+  if (typeof vm.setInterpolation === "function") vm.setInterpolation(true);
+  if (typeof vm.setCompilerOptions === "function") vm.setCompilerOptions({ warpTimer: true });
+  if (typeof twconfig.framerate === "number" && typeof vm.setFramerate === "function") {
+    vm.setFramerate(twconfig.framerate);
+  }
+  if (typeof twconfig.interpolation === "boolean" && typeof vm.setInterpolation === "function") {
+    vm.setInterpolation(twconfig.interpolation);
+  }
+  if (twconfig.runtimeOptions && typeof vm.setRuntimeOptions === "function") {
+    vm.setRuntimeOptions(twconfig.runtimeOptions);
+  }
+  if (twconfig.compilerOptions && typeof vm.setCompilerOptions === "function") {
+    vm.setCompilerOptions(twconfig.compilerOptions);
+  }
+  if (typeof twconfig.hq === "boolean") {
+    const renderer = vm.runtime && vm.runtime.renderer;
+    if (renderer) renderer.useHighQualityRender = twconfig.hq;
+  }
+  if (typeof twconfig.width === "number") scaffolding.width = twconfig.width;
+  if (typeof twconfig.height === "number") scaffolding.height = twconfig.height;
+}
+
+function boot() {
+  if (typeof Scaffolding === "undefined") {
+    showOverlay(uiText("bundleMissing"));
+    return;
+  }
+  scaffolding = new Scaffolding.Scaffolding();
+  scaffolding.width = 640;
+  scaffolding.height = 360;
+  // Fixed internal 640x360 (16:9): the stage resolution never changes.
+  // preserve-ratio scales the rendered stage to fit the container
+  // (letterboxed), so resizing the window never deforms the project.
+  scaffolding.resizeMode = "preserve-ratio";
+  scaffolding.usePackagedRuntime = false;
+  scaffolding.setup();
+  applyTwConfig();
+  scaffolding.appendTo(document.getElementById("stage"));
+  storage = scaffolding.storage;
+  storage.addWebStore(
+    [
+      storage.AssetType.ImageVector,
+      storage.AssetType.ImageBitmap,
+      storage.AssetType.Sound
+    ],
+    (asset) =>
+      `https://assets.scratch.mit.edu/internalapi/asset/${asset.assetId}.${asset.dataFormat}/get/`
+  );
+  showOverlay(uiText("selectProject"));
+}
+
+async function loadScratchProject(id) {
+  if (!scaffolding) {
+    showOverlay(uiText("bundleMissing"));
+    return "error: scaffolding bundle missing";
+  }
+  try {
+    showOverlay(uiText("loadingProject"));
+    const response = await fetch("/projects/" + encodeURIComponent(id) + ".sb3");
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const buffer = await response.arrayBuffer();
+    await scaffolding.loadProject(buffer);
+    hideOverlay();
+    return "ok";
+  } catch (err) {
+    showOverlay(uiText("errorPrefix") + err.message);
+    return "error: " + err.message;
+  }
+}
+
+function greenFlag() {
+  if (scaffolding) scaffolding.greenFlag();
+}
+
+function stopAll() {
+  if (scaffolding) scaffolding.stopAll();
+}
+
+function pausePlayer() {
+  // Freeze the VM stepping loop without killing scripts (true pause).
+  if (scaffolding && scaffolding.vm && scaffolding.vm.runtime &&
+      scaffolding.vm.runtime.frameLoop) {
+    scaffolding.vm.runtime.frameLoop.stop();
+  }
+}
+
+function resumePlayer() {
+  if (scaffolding && scaffolding.vm && scaffolding.vm.runtime &&
+      scaffolding.vm.runtime.frameLoop) {
+    scaffolding.vm.runtime.frameLoop.start();
+  }
+}
+
+window.loadScratchProject = loadScratchProject;
+window.greenFlag = greenFlag;
+window.stopAll = stopAll;
+window.pausePlayer = pausePlayer;
+window.resumePlayer = resumePlayer;
+
+// Clones panel ----------------------------------------------------
+let clonesVisible = false;
+let clonesTimer = null;
+
+function renderClones() {
+  const panel = document.getElementById("clones-panel");
+  if (!panel) return;
+  const vm = scaffolding && scaffolding.vm;
+  const targets = vm && vm.runtime && vm.runtime.targets;
+  panel.replaceChildren();
+  if (!targets) {
+    const empty = document.createElement("div");
+    empty.className = "clone-empty";
+    empty.textContent = uiText("noProject");
+    panel.appendChild(empty);
+    return;
+  }
+  const clones = targets.filter(function (t) { return t && !t.isStage && !t.isOriginal; });
+  if (clones.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "clone-empty";
+    empty.textContent = uiText("noActiveClones");
+    panel.appendChild(empty);
+    return;
+  }
+  const bySprite = new Map();
+  for (const c of clones) {
+    const name = (c.sprite && c.sprite.name) || "?";
+    if (!bySprite.has(name)) bySprite.set(name, []);
+    bySprite.get(name).push(c);
+  }
+  for (const [name, list] of bySprite) {
+    const title = document.createElement("div");
+    title.className = "clone-group-title";
+    title.textContent = name;
+    panel.appendChild(title);
+    for (const c of list) {
+      const row = document.createElement("div");
+      row.className = "clone-row";
+      row.textContent = "x: " + Math.round(c.x) + "  y: " + Math.round(c.y);
+      panel.appendChild(row);
+    }
+  }
+}
+
+function toggleClonesPanel() {
+  clonesVisible = !clonesVisible;
+  const panel = document.getElementById("clones-panel");
+  if (!panel) return;
+  if (clonesVisible) {
+    panel.classList.remove("hidden");
+    renderClones();
+    clonesTimer = setInterval(renderClones, 200);
+    if (typeof window.toggleClonesButtonState === "function") window.toggleClonesButtonState(true);
+  } else {
+    panel.classList.add("hidden");
+    if (clonesTimer) { clearInterval(clonesTimer); clonesTimer = null; }
+  }
+}
+window.toggleClonesPanel = toggleClonesPanel;
+
+function getCloneCount() {
+  const vm = scaffolding && scaffolding.vm;
+  const targets = vm && vm.runtime && vm.runtime.targets;
+  if (!targets) return 0;
+  return targets.filter(function (t) { return t && !t.isStage && !t.isOriginal; }).length;
+}
+window.getCloneCount = getCloneCount;
+
+// Fullscreen ------------------------------------------------------
+function enterFullscreen() {
+  const root = document.getElementById("player-root");
+  if (root && typeof root.requestFullscreen === "function" && !document.fullscreenElement) {
+    root.requestFullscreen();
+  }
+}
+function exitFullscreen() {
+  if (document.fullscreenElement) document.exitFullscreen();
+}
+window.enterFullscreen = enterFullscreen;
+window.exitFullscreen = exitFullscreen;
+
+document.addEventListener("fullscreenchange", function () {
+  document.body.classList.toggle("fs-active", !!document.fullscreenElement);
+});
+document.getElementById("fs-exit").addEventListener("click", exitFullscreen);
+
+// Session-only variable persistence: { projectId: { variableId: value } }
+const savedValuesByProject = {};   // { projectId: { variableId: value } } — session-only
+let currentProjectId = null;       // var id currently loaded in the player
+
+function findVariable(id) {
+  if (!scaffolding || !scaffolding.vm || !scaffolding.vm.runtime) return null;
+  for (const target of scaffolding.vm.runtime.targets) {
+    if (!target.variables) continue;
+    // Vendored VM keeps variables as plain {id: Variable} objects; also accept
+    // a Map shape (get) in case a future bundle switches back.
+    const variable = Object.prototype.hasOwnProperty.call(target.variables, id)
+      ? target.variables[id]
+      : (typeof target.variables.get === "function" ? target.variables.get(id) : null);
+    if (variable) return variable;
+  }
+  return null;
+}
+
+function listVariables() {
+  const out = [];
+  if (!scaffolding || !scaffolding.vm || !scaffolding.vm.runtime) return out;
+  for (const target of scaffolding.vm.runtime.targets) {
+    if (!target.variables) continue;
+    const variables =
+      typeof target.variables.values === "function"
+        ? target.variables.values()
+        : Object.values(target.variables);
+    for (const variable of variables) {
+      out.push({
+        id: variable.id,
+        name: variable.name,
+        target: (target.getName && target.getName()) || "",
+        value: variable.value,           // scalar for variables, JS array for lists
+        isCloud: !!variable.isCloud,
+        kind: Array.isArray(variable.value) ? "list" : "variable"
+      });
+    }
+  }
+  return out;
+}
+window.listVariables = listVariables;
+
+function setVariableValue(id, value) {
+  try {
+    const variable = findVariable(id);
+    if (!variable) return false;
+    // Coerce to the shapes tw-vm expects so a bad edit can never poison a
+    // variable: scalars hold string/number/boolean, lists hold scalar arrays.
+    const isList = Array.isArray(variable.value);
+    let next;
+    if (isList) {
+      const source = Array.isArray(value) ? value : [value];
+      next = source.map((entry) => {
+        const t = typeof entry;
+        return t === "string" || t === "number" || t === "boolean" ? entry : String(entry);
+      });
+    } else {
+      const t = typeof value;
+      next = t === "string" || t === "number" || t === "boolean" ? value : String(value);
+    }
+    if (variable.isCloud) next = String(next); // cloud values are strings
+    if (typeof variable.setValue === "function") {
+      variable.setValue(next); // emits value-changed; monitors update immediately
+    } else {
+      variable.value = next;
+    }
+    const runtime = scaffolding && scaffolding.vm && scaffolding.vm.runtime;
+    if (runtime && typeof runtime.requestUpdateMonitorMap === "function") runtime.requestUpdateMonitorMap();
+    return true;
+  } catch (err) {
+    return "error: " + (err && err.message ? err.message : String(err));
+  }
+}
+window.setVariableValue = setVariableValue;
+
+async function switchProject(oldPid, oldSavedIds, newPid, newSavedIds) {
+  try {
+    if (scaffolding) {
+      // 1) snapshot the values of the checked variables of the project we are leaving
+      if (oldPid != null && Array.isArray(oldSavedIds)) {
+        const cache = (savedValuesByProject[oldPid] = savedValuesByProject[oldPid] || {});
+        for (const id of oldSavedIds) {
+          const variable = findVariable(id);
+          if (variable) cache[id] = variable.value;
+        }
+      }
+      // 2) stop all scripts so old sprites/monitors stop showing old state
+      if (typeof scaffolding.stopAll === "function") scaffolding.stopAll();
+    }
+    showOverlay(uiText("loadingProject"));
+    const response = await fetch("/projects/" + encodeURIComponent(newPid) + ".sb3");
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const buffer = await response.arrayBuffer();
+    await scaffolding.loadProject(buffer);
+    // 3) restore the checked variables saved for the project we are entering
+    const saved = savedValuesByProject[newPid] || {};
+    for (const id of newSavedIds || []) {
+      if (Object.prototype.hasOwnProperty.call(saved, id)) {
+        const variable = findVariable(id);
+        if (variable) variable.value = saved[id];
+      }
+    }
+    currentProjectId = newPid;
+    hideOverlay();
+    return "ok";
+  } catch (err) {
+    showOverlay(uiText("errorPrefix") + err.message);
+    return "error: " + err.message;
+  }
+}
+window.switchProject = switchProject;
+
+// Language switch from the desktop shell: re-apply every visible web-owned text.
+window.setPlayerLanguage = function (lang) {
+  uiLang = lang === "en" ? "en" : "es";
+  const overlay = document.getElementById("overlay");
+  if (overlay && !overlay.classList.contains("hidden")) {
+    // Only the pre-project prompt can be re-applied verbatim; loading/error
+    // overlays are transient and errors embed a raw message.
+    const vm = scaffolding && scaffolding.vm;
+    if (!vm || !vm.runtime || !vm.runtime.targets) {
+      showOverlay(uiText("selectProject"));
+    }
+  }
+  if (clonesVisible) renderClones();
+  const fs = document.getElementById("fs-exit");
+  if (fs) {
+    fs.setAttribute("aria-label", uiText("fsExit"));
+    fs.title = uiText("fsExit");
+  }
+};
+
+boot();
+</script>
+</body>
+</html>

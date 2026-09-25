@@ -1,0 +1,301 @@
+/* Basic Engine Hub — browser menu theme.
+   Mirrors the desktop palette from hub/theme.qss: dark background #101216,
+   card surface #181c22, accent #ff8c42, hover glow on cards. */
+
+:root {
+  color-scheme: dark;
+  --bg: #101216;
+  --surface: #181c22;
+  --surface-raised: #1f242c;
+  --surface-hover: #1b2027;
+  --border: #2b2f36;
+  --border-hover: #3a4754;
+  --accent: #ff8c42;
+  --accent-hover: #ffa05e;
+  --accent-pressed: #e6792e;
+  --text: #e8e8e8;
+  --text-strong: #f2f2f2;
+  --text-muted: #9aa0a8;
+  --text-dim: #6a7077;
+  --font: "Inter", "Segoe UI", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  overflow: hidden;
+}
+
+body.player-open { overflow: hidden; }
+
+.hidden { display: none !important; }
+
+/* Header ------------------------------------------------------------------ */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-bottom: 1px solid #262a30;
+}
+
+.app-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.search {
+  flex: 1 1 220px;
+  max-width: 360px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.search:focus { outline: none; border-color: var(--accent); }
+
+/* Buttons (mirror QPushButton styles) --------------------------------------- */
+
+.btn {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.btn:hover { background: #262c36; border-color: var(--border-hover); }
+.btn:active { background: #181c22; }
+.btn:disabled { color: var(--text-dim); background: var(--surface); border-color: #23272d; cursor: default; }
+.btn:focus-visible, .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Primary button (mirrors QPushButton[role="primary"]) ---------------------- */
+
+.btn-primary { background: var(--accent); color: #141414; border: 0; font-weight: 600; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:active { background: var(--accent-pressed); }
+
+/* Status line ---------------------------------------------------------------- */
+
+.status {
+  margin: 0;
+  padding: 8px 16px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Card grid (the scrolling area, like the desktop QScrollArea) --------------- */
+
+.grid {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  padding: 12px 16px 24px;
+  align-content: start;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Project card (mirrors ProjectCard: border-radius 12, hover accent) --------- */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  overflow: hidden;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.card:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+/* Hero image: project thumbnail with placeholder surface when missing --------- */
+
+.hero {
+  position: relative;
+  display: block;
+  aspect-ratio: 4 / 3;
+  background: var(--surface-raised);
+}
+
+.hero-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hero-empty::after {
+  content: "Sin imagen";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* Avatar badge overlaid on top of the hero image ------------------------------ */
+
+.avatar {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  background: var(--surface-raised);
+  object-fit: cover;
+}
+
+/* Card info: title and @username (mirror #cardTitle / #cardMeta) --------------- */
+
+.info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px 10px;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Error box -------------------------------------------------------------------- */
+
+.error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 48px 16px;
+  text-align: center;
+}
+
+.error-text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+/* Player overlay ---------------------------------------------------------------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.overlay-top {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+#player {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: #000;
+}
+
+.player-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--border-hover);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Scrollbars (mirror theme.qss scrollbar colors) ------------------------------- */
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
+/* Small screens ------------------------------------------------------------------ */
+
+@media (max-width: 520px) {
+  .app-title { font-size: 18px; }
+  .search { max-width: none; }
+}
