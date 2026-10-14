@@ -35,28 +35,20 @@ from PySide6.QtWidgets import (
 )
 
 from hub import cache, i18n, scratch_api, settings
+from hub.catalog import (
+    BLOCKED_PROJECT_IDS,
+    FEATURED_PROJECT_ID as CATALOG_FEATURED_PROJECT_ID,
+    PINNED_PROJECT_IDS,
+    SOURCE_USER,
+    STUDIO_ID,
+)
 from hub.cache import is_cached, thumbnail_path
 from hub.player import Player
 from hub.project_dialog import ProjectDetailDialog
 
-STUDIO_ID = "35865803"
-SOURCE_USER = "Alvaro_Games19"
-
 
 class ListingWorker(QThread):
     """One-shot user listing; runs user_projects off the GUI thread."""
-
-    # Test/scratch projects the user asked to hide from the menu.
-    BLOCKED_PROJECT_IDS: frozenset[int] = frozenset(
-        {
-            1383138050, 1369017039, 1368016306, 1323323065, 1310326945,
-            1198347181, 1189578716, 1186588783, 1198685482, 1174546565, 1245982356,
-            1187594776, 1220979078, 1121241960, 400240654, 1201842653,
-        }
-    )
-
-    # Extra projects to pin at the front of the menu even when NOT in the studio.
-    PINNED_PROJECT_IDS: frozenset[int] = frozenset({1192855606})
 
     finished_ok = Signal(list)
     failed = Signal(str)
@@ -78,9 +70,6 @@ class ListingWorker(QThread):
                     projects.extend(fetch())
                 except scratch_api.ScratchAPIError as exc:
                     last_error = str(exc)  # best-effort per source: one failing source must not hide the other
-            if not projects and last_error:
-                self.failed.emit(last_error)
-                return
             # Union with dedupe by id, keeping the first occurrence (studio order first).
             seen: set[int] = set()
             unique: list[dict] = []
@@ -93,17 +82,30 @@ class ListingWorker(QThread):
             projects = [
                 project
                 for project in unique
-                if int(project["id"]) not in self.BLOCKED_PROJECT_IDS
+                if int(project["id"]) not in BLOCKED_PROJECT_IDS
             ]
             existing = {int(project["id"]) for project in projects}
-            for pid in sorted(self.PINNED_PROJECT_IDS):
+            for pid in sorted(PINNED_PROJECT_IDS):
                 if pid in existing:
                     continue
                 try:
                     projects.insert(0, scratch_api.fetch_project(pid))
                 except scratch_api.ScratchAPIError:
                     continue  # best-effort: a failed pinned fetch must not hide the listing
-            self.finished_ok.emit(projects)
+            projects.extend(cache.cached_projects())
+            if not projects and last_error:
+                self.failed.emit(last_error)
+                return
+            # Keep remote metadata/order, then add disk-only projects.
+            seen.clear()
+            unique = []
+            for project in projects:
+                pid = int(project["id"])
+                if pid in seen or pid in BLOCKED_PROJECT_IDS:
+                    continue
+                seen.add(pid)
+                unique.append(project)
+            self.finished_ok.emit(unique)
         except Exception as exc:  # noqa: BLE001 - keep the app alive on anything
             self.failed.emit(i18n.tr("unexpected_error", exc=exc))
 
@@ -155,8 +157,9 @@ class ThumbnailWorker(QThread):
                 destination = thumbnail_path(pid)
                 image = project.get("image")
                 if image:
-                    if destination.is_file() and destination.stat().st_size > 0:
-                        self.thumbnail_ready.emit(pid, str(destination))
+                    cached = cache.find_thumbnail_path(pid)
+                    if cached.is_file() and cached.stat().st_size > 0:
+                        self.thumbnail_ready.emit(pid, str(cached))
                     else:
                         scratch_api.download_thumbnail(pid, image, destination)
                         self.thumbnail_ready.emit(pid, str(destination))
@@ -164,18 +167,21 @@ class ThumbnailWorker(QThread):
                 continue  # placeholder stays
             except Exception:  # noqa: BLE001
                 continue
-            avatar_url = project.get("avatar") or ""
             try:
                 creator_id = int(project.get("creator_id") or 0)
             except (TypeError, ValueError):
                 creator_id = 0
-            if not avatar_url or creator_id in self._seen_creators:
+            if creator_id <= 0 or creator_id in self._seen_creators:
                 continue
             self._seen_creators.add(creator_id)
             destination = cache.avatar_path(creator_id)
             try:
-                if destination.is_file() and destination.stat().st_size > 0:
-                    self.avatar_ready.emit(creator_id, str(destination))
+                cached = cache.find_avatar_path(creator_id)
+                if cached.is_file() and cached.stat().st_size > 0:
+                    self.avatar_ready.emit(creator_id, str(cached))
+                    continue
+                avatar_url = project.get("avatar") or ""
+                if not avatar_url:
                     continue
                 scratch_api.download_avatar(creator_id, avatar_url, destination)
                 self.avatar_ready.emit(creator_id, str(destination))
@@ -391,7 +397,7 @@ class Hub(QWidget):
     """Basic Engine Hub main window: menu grid page + player page."""
 
     # Project pinned first on the menu with a golden frame.
-    FEATURED_PROJECT_ID = 1031335631
+    FEATURED_PROJECT_ID = CATALOG_FEATURED_PROJECT_ID
 
     def __init__(self) -> None:
         super().__init__()
@@ -415,6 +421,7 @@ class Hub(QWidget):
         self._clone_count_timer.setInterval(400)
         self._clone_count_timer.timeout.connect(self._poll_clone_count)
         self._items: dict[int, ProjectCard] = {}
+        self._column_count = 0
         self._spacer_row: int | None = None
         self._listing: ListingWorker | None = None
         self._download: DownloadWorker | None = None
@@ -466,7 +473,7 @@ class Hub(QWidget):
         self._grid.setContentsMargins(0, 0, 0, 0)
         self._grid.setSpacing(12)
         for col in range(4):
-            self._grid.setColumnStretch(col, 1)
+            self._grid.setColumnStretch(col, 0)
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
@@ -618,7 +625,27 @@ class Hub(QWidget):
         close_btn = QPushButton(i18n.tr("close"))
         close_btn.clicked.connect(dialog.accept)
         form.addRow(close_btn)
+        clear_cache_btn = QPushButton(i18n.tr("clear_cache"))
+        clear_cache_btn.clicked.connect(lambda: self._confirm_clear_cache(dialog))
+        form.addRow(clear_cache_btn)
         dialog.exec()
+
+    def _confirm_clear_cache(self, dialog) -> None:
+        if self._downloading:
+            return
+        answer = QMessageBox.question(
+            dialog,
+            i18n.tr("clear_cache_title"),
+            i18n.tr("clear_cache_confirm"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        removed = cache.clear_project_cache()
+        for card in self._items.values():
+            card.set_missing()
+        self.status_label.setText(i18n.tr("cache_cleared", count=removed))
 
     def _retranslate(self) -> None:
         """Re-apply every static widget string in the current language."""
@@ -724,11 +751,12 @@ class Hub(QWidget):
             card = ProjectCard(
                 project, featured=int(project["id"]) == self.FEATURED_PROJECT_ID
             )
+            card.set_favorite(self._is_favorite(card.pid))
             # clicked emits the pid (int); the detail dialog needs the card dict.
             card.clicked.connect(
                 lambda pid, p=project: self._open_project_detail(p)
             )
-            row, col = divmod(index, 4)
+            row, col = divmod(index, max(1, self._column_count or 4))
             self._grid.addWidget(card, row, col)
             self._items[card.pid] = card
         self._spacer_row = self._grid.rowCount()
@@ -739,6 +767,38 @@ class Hub(QWidget):
         self._thumbnails.avatar_ready.connect(self._on_avatar_ready)
         self._thumbnails.done.connect(self._on_thumbnails_done)
         self._thumbnails.start()
+        self._relayout_cards()
+
+    @staticmethod
+    def _is_favorite(project_id: int) -> bool:
+        return any(
+            str(value).isdigit() and int(value) == project_id
+            for value in settings.get("favorites", [])
+        )
+
+    def _relayout_cards(self) -> None:
+        if not self._items or not hasattr(self, "_scroll"):
+            return
+        spacing = self._grid.spacing()
+        columns = max(1, min(4, (self._scroll.viewport().width() + spacing) // (260 + spacing)))
+        if columns == self._column_count and self._spacer_row is not None:
+            return
+        self._column_count = columns
+        for col in range(4):
+            self._grid.setColumnStretch(col, int(col < columns))
+        if self._spacer_row is not None:
+            self._grid.setRowStretch(self._spacer_row, 0)
+            self._spacer_row = None
+        for index, card in enumerate(self._items.values()):
+            self._grid.removeWidget(card)
+            row, col = divmod(index, columns)
+            self._grid.addWidget(card, row, col)
+        self._spacer_row = self._grid.rowCount()
+        self._grid.setRowStretch(self._spacer_row, 1)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        QTimer.singleShot(0, self._relayout_cards)
 
     def _on_listing_failed(self, message: str) -> None:
         self._set_busy(False)

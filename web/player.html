@@ -99,47 +99,16 @@ function hideOverlay() {
   document.getElementById("overlay").classList.add("hidden");
 }
 
-// TurboWarp-compatible player config. Edit THIS object to change behavior;
-// the marker is kept so the object is recognizable. Notes:
-//  - framerate: TurboWarp clamps to max 250.
-//  - hq: high-quality pen rendering.
-//  - runtimeOptions.maxClones: Infinity = unlimited clones; miscLimits: false
-//    = remove list/text/etc. limits; fencing: false = remove sprite fences.
+// Keep the stage size fixed while retaining Scaffolding's normal runtime limits.
 const twconfig = {
-  "framerate": 250,
-  "runtimeOptions": {"maxClones": Infinity, "miscLimits": false, "fencing": false},
-  "hq": true,
-  "width": 640
+  "width": 640,
+  "height": 360
 }; // _twconfig_
 
 function applyTwConfig() {
-  // Apply the twconfig literal generically after setup(). setup() enables
-  // compatibility mode (30 FPS), so this must run after setup(). Every call
-  // is guarded so a future bundle that renames an API degrades gracefully.
-  const vm = scaffolding && scaffolding.vm;
-  if (!vm) return;
-  // Baseline TurboWarp settings (interpolation + warp timer) stay active;
-  // the literal above overrides only the keys it declares.
-  if (typeof vm.setInterpolation === "function") vm.setInterpolation(true);
-  if (typeof vm.setCompilerOptions === "function") vm.setCompilerOptions({ warpTimer: true });
-  if (typeof twconfig.framerate === "number" && typeof vm.setFramerate === "function") {
-    vm.setFramerate(twconfig.framerate);
-  }
-  if (typeof twconfig.interpolation === "boolean" && typeof vm.setInterpolation === "function") {
-    vm.setInterpolation(twconfig.interpolation);
-  }
-  if (twconfig.runtimeOptions && typeof vm.setRuntimeOptions === "function") {
-    vm.setRuntimeOptions(twconfig.runtimeOptions);
-  }
-  if (twconfig.compilerOptions && typeof vm.setCompilerOptions === "function") {
-    vm.setCompilerOptions(twconfig.compilerOptions);
-  }
-  if (typeof twconfig.hq === "boolean") {
-    const renderer = vm.runtime && vm.runtime.renderer;
-    if (renderer) renderer.useHighQualityRender = twconfig.hq;
-  }
-  if (typeof twconfig.width === "number") scaffolding.width = twconfig.width;
-  if (typeof twconfig.height === "number") scaffolding.height = twconfig.height;
+  if (!scaffolding) return;
+  scaffolding.width = twconfig.width;
+  scaffolding.height = twconfig.height;
 }
 
 function boot() {
@@ -148,8 +117,8 @@ function boot() {
     return;
   }
   scaffolding = new Scaffolding.Scaffolding();
-  scaffolding.width = 640;
-  scaffolding.height = 360;
+  scaffolding.width = twconfig.width;
+  scaffolding.height = twconfig.height;
   // Fixed internal 640x360 (16:9): the stage resolution never changes.
   // preserve-ratio scales the rendered stage to fit the container
   // (letterboxed), so resizing the window never deforms the project.
@@ -181,6 +150,20 @@ async function loadScratchProject(id) {
     const response = await fetch("/projects/" + encodeURIComponent(id) + ".sb3");
     if (!response.ok) throw new Error("HTTP " + response.status);
     const buffer = await response.arrayBuffer();
+    return await loadScratchProjectBytes(buffer);
+  } catch (err) {
+    showOverlay(uiText("errorPrefix") + err.message);
+    return "error: " + err.message;
+  }
+}
+
+async function loadScratchProjectBytes(buffer) {
+  if (!scaffolding) {
+    showOverlay(uiText("bundleMissing"));
+    return "error: scaffolding bundle missing";
+  }
+  try {
+    showOverlay(uiText("loadingProject"));
     await scaffolding.loadProject(buffer);
     hideOverlay();
     return "ok";
@@ -214,6 +197,7 @@ function resumePlayer() {
 }
 
 window.loadScratchProject = loadScratchProject;
+window.loadScratchProjectBytes = loadScratchProjectBytes;
 window.greenFlag = greenFlag;
 window.stopAll = stopAll;
 window.pausePlayer = pausePlayer;

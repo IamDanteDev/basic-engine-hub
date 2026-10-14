@@ -17,7 +17,7 @@ from PySide6.QtWebEngineCore import QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
 
 from hub import i18n
-from hub.cache import PROJECTS
+from hub import cache
 
 BASE = Path(__file__).resolve().parent.parent
 WEB = BASE / "web"
@@ -49,9 +49,13 @@ class _PlayerHandler(SimpleHTTPRequestHandler):
             self.send_error(404, "Not Found")
 
     def _serve_project(self, name: str) -> None:
-        root = PROJECTS.resolve()
-        target = (PROJECTS / name).resolve()
-        if not target.is_relative_to(root):
+        project_id = Path(name).stem
+        if Path(name).name != name or not project_id.isdigit() or Path(name).suffix != ".sb3":
+            self.send_error(403, "Forbidden")
+            return
+        target = cache.find_project_path(project_id).resolve()
+        roots = (cache.PROJECTS.resolve(), cache.LEGACY_PROJECTS.resolve())
+        if not any(target.is_relative_to(root) for root in roots):
             self.send_error(403, "Forbidden")
             return
         self._serve_file(target)

@@ -454,11 +454,13 @@ def ensure_downloaded(project_id, **meta) -> Path:
     Returns the cached file path. If ``projects/<id>.sb3`` already exists it is
     returned untouched (no network call, no re-download).
     """
-    path = cache.project_path(project_id)
     if cache.is_cached(project_id):
-        return path
+        return cache.find_project_path(project_id)
+    path = cache.project_path(project_id)
     data = download_project_bytes(project_id)
-    path.write_bytes(data)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_bytes(data)
+    temporary.replace(path)
     cache.record_entry(
         project_id,
         format=cache.detect_format(data),

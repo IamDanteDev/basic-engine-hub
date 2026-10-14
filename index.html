@@ -5,16 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Basic Engine Hub</title>
   <meta name="description" content="Menú de proyectos de Basic Engine Hub: estudio y perfil de Alvaro_Games19, reproducibles en TurboWarp.">
+  <link rel="icon" href="Assets/Icon.png" type="image/png">
   <link rel="stylesheet" href="web/style.css">
   <script src="web/app.js" defer></script>
 </head>
 <body>
   <header class="app-header">
-    <h1 class="app-title">Basic Engine Hub</h1>
+    <div class="app-brand">
+      <img class="app-logo" src="Assets/Icon.png" alt="Basic Engine Hub logo" width="32" height="32">
+      <h1 class="app-title">Basic Engine Hub</h1>
+    </div>
     <div class="header-actions">
       <input id="search" class="search" type="search"
              placeholder="Buscar proyectos…" autocomplete="off"
              aria-label="Buscar proyectos">
+            <button id="favorites-filter" class="btn" type="button" aria-pressed="false">Favoritos</button>
       <button id="refresh" class="btn" type="button">Actualizar</button>
     </div>
   </header>
@@ -22,6 +27,35 @@
   <p id="status" class="status" role="status">Cargando proyectos…</p>
 
   <main id="grid" class="grid" aria-live="polite"></main>
+
+  <dialog id="detail-dialog" class="detail-dialog" aria-labelledby="detail-title">
+    <div class="dialog-top">
+      <a id="detail-open-scratch" class="btn" target="_blank" rel="noopener">Abrir en Scratch</a>
+      <button id="detail-close" class="btn" type="button" aria-label="Cerrar detalles">Cerrar</button>
+    </div>
+    <div class="detail-layout">
+      <img id="detail-cover" class="detail-cover" alt="" hidden>
+      <div class="detail-main">
+        <h2 id="detail-title"></h2>
+        <a id="detail-author" class="detail-author" target="_blank" rel="noopener"></a>
+        <p id="detail-stats" class="detail-stats"></p>
+        <div class="detail-actions">
+          <button id="detail-play" class="btn btn-primary" type="button">Jugar</button>
+          <button id="detail-favorite" class="btn" type="button"></button>
+        </div>
+      </div>
+    </div>
+    <section class="detail-section">
+      <h3>Descripción</h3>
+      <p id="detail-description">Cargando…</p>
+      <h3>Instrucciones</h3>
+      <p id="detail-instructions">Cargando…</p>
+    </section>
+    <section class="detail-section">
+      <h3>Comentarios</h3>
+      <div id="detail-comments" class="comments-list" aria-live="polite">Cargando…</div>
+    </section>
+  </dialog>
 
   <div id="error" class="error hidden">
     <p id="error-text" class="error-text"></p>
@@ -31,6 +65,14 @@
   <div id="player-overlay" class="overlay hidden">
     <div class="overlay-top">
       <button id="back" class="btn" type="button">← Volver al menú</button>
+      <div id="local-player-controls" class="player-controls" hidden>
+        <button id="player-flag" class="btn" type="button" title="Iniciar">Bandera</button>
+        <button id="player-pause" class="btn" type="button" title="Pausar">Pausar</button>
+        <button id="player-stop" class="btn" type="button" title="Detener">Detener</button>
+        <button id="player-variables" class="btn" type="button">Variables y listas</button>
+        <button id="player-clones" class="btn" type="button">Clones</button>
+        <button id="player-fullscreen" class="btn" type="button">Pantalla completa</button>
+      </div>
     </div>
     <div id="player-loading" class="player-loading" hidden>
       <span class="spinner" aria-hidden="true"></span>
@@ -39,5 +81,28 @@
     <iframe id="player" title="Reproductor del proyecto"
             allow="autoplay; fullscreen" allowfullscreen></iframe>
   </div>
+
+  <dialog id="variables-dialog" class="variables-dialog" aria-labelledby="variables-title">
+    <div class="dialog-top">
+      <h2 id="variables-title">Variables y listas</h2>
+      <button id="variables-close" class="btn" type="button">Cerrar</button>
+    </div>
+    <div class="table-wrap">
+      <table class="variables-table">
+        <thead><tr><th>Guardar</th><th>Tipo</th><th>Variable</th><th>Objetivo</th><th>Valor</th><th></th></tr></thead>
+        <tbody id="variables-rows"></tbody>
+      </table>
+    </div>
+    <p id="variables-empty" class="detail-muted" hidden>No hay variables en este proyecto.</p>
+  </dialog>
+  <dialog id="edit-variable-dialog" class="variables-dialog" aria-labelledby="edit-variable-title">
+    <h2 id="edit-variable-title">Editar valor</h2>
+    <label id="edit-variable-label" for="edit-variable-input"></label>
+    <textarea id="edit-variable-input" rows="5" spellcheck="false"></textarea>
+    <div class="detail-actions">
+      <button id="edit-variable-cancel" class="btn" type="button">Cancelar</button>
+      <button id="edit-variable-save" class="btn btn-primary" type="button">Guardar</button>
+    </div>
+  </dialog>
 </body>
 </html>

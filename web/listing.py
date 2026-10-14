@@ -13,31 +13,25 @@ Python stdlib only (urllib). No third-party dependencies.
 """
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import sys
 import urllib.request
+from pathlib import Path
 
-# --- Constants (mirror hub/gui.py) ----------------------------------------
-
-STUDIO_ID = "35865803"
-SOURCE_USER = "Alvaro_Games19"
-
-# Test/scratch projects the user asked to hide from the menu.
-BLOCKED_PROJECT_IDS = frozenset(
-    {
-        1383138050, 1369017039, 1368016306, 1323323065, 1310326945,
-        1198347181, 1189578716, 1186588783, 1198685482, 1174546565, 1245982356,
-        1187594776, 1220979078, 1121241960, 400240654, 1201842653,
-    }
+_catalog = json.loads(
+    (Path(__file__).resolve().parent.parent / "catalog.json").read_text(encoding="utf-8")
 )
-
-# Extra projects to pin at the front of the menu even when NOT in the studio.
-PINNED_PROJECT_IDS = frozenset({1192855606})
+STUDIO_ID = str(_catalog["studio_id"])
+SOURCE_USER = str(_catalog["source_user"])
+BLOCKED_PROJECT_IDS = frozenset(map(int, _catalog["blocked_project_ids"]))
+PINNED_PROJECT_IDS = frozenset(map(int, _catalog["pinned_project_ids"]))
 
 PAGE_SIZE = 40
 MAX_ITEMS = 1000  # safety cap on total items fetched per endpoint
 USER_AGENT = "BasicEngineHubWeb/0.1"
 TIMEOUT = 15
+DETAIL_WORKERS = 8
 
 STUDIO_ENDPOINT = f"https://api.scratch.mit.edu/studios/{STUDIO_ID}/projects"
 USER_ENDPOINT = f"https://api.scratch.mit.edu/users/{SOURCE_USER}/projects"
@@ -133,7 +127,49 @@ def normalize(item: dict, fallback_username: str | None = None) -> dict | None:
     }
 
 
-def build_listing() -> list:
+def _detail_fields(project_id: int) -> dict:
+    payload = fetch_json(f"https://api.scratch.mit.edu/projects/{project_id}")
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"unexpected project detail payload: {project_id}")
+    stats = payload.get("stats") if isinstance(payload.get("stats"), dict) else {}
+
+    def count(name: str) -> int:
+        try:
+            return int(stats.get(name) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    return {
+        "description": str(payload.get("description") or ""),
+        "instructions": str(payload.get("instructions") or ""),
+        "comments_allowed": bool(payload.get("comments_allowed")),
+        "stats": {
+            "views": count("views"),
+            "loves": count("loves"),
+            "favorites": count("favorites"),
+            "remixes": count("remixes"),
+        },
+    }
+
+
+def _enrich_details(projects: list[dict]) -> list[dict]:
+    """Add detail data best-effort for static hosting, where Scratch CORS blocks fetches."""
+    if not projects:
+        return projects
+    with ThreadPoolExecutor(max_workers=min(DETAIL_WORKERS, len(projects))) as pool:
+        futures = {
+            pool.submit(_detail_fields, int(project["id"])): project
+            for project in projects
+        }
+        for future in as_completed(futures):
+            try:
+                futures[future].update(future.result())
+            except Exception:  # noqa: BLE001 - metadata should not block Pages deployment
+                continue
+    return projects
+
+
+def build_listing(include_details: bool = False) -> list:
     """Build the final ordered listing (see module docstring for the order).
 
     Best-effort per source, like the desktop worker: one failing source must
@@ -175,7 +211,7 @@ def build_listing() -> list:
             continue  # best-effort: a failed pinned fetch must not hide the listing
         if pinned is not None:
             listing.insert(0, pinned)
-    return listing
+    return _enrich_details(listing) if include_details else listing
 
 
 def main() -> int:
@@ -187,10 +223,15 @@ def main() -> int:
         default="listing.json",
         help="output path for the merged listing (default: listing.json)",
     )
+    parser.add_argument(
+        "--with-details",
+        action="store_true",
+        help="include descriptions, instructions, and stats for static hosting",
+    )
     args = parser.parse_args()
 
     try:
-        listing = build_listing()
+        listing = build_listing(include_details=args.with_details)
     except RuntimeError as exc:
         print(f"error building listing: {exc}", file=sys.stderr)
         return 1

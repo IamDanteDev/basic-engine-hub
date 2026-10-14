@@ -18,6 +18,29 @@ from hub import i18n, scratch_api
 _MAX_REPLIES = 5
 _COVER_W = 240
 _COVER_H = 160
+_ACTIVE_DIALOG_WORKERS: set[QThread] = set()
+
+
+def _release_dialog_worker(worker: QThread) -> None:
+    _ACTIVE_DIALOG_WORKERS.discard(worker)
+    worker.deleteLater()
+
+
+class ProjectDetailWorker(QThread):
+    """Fetch project metadata without blocking the dialog or main window."""
+
+    detail_ready = Signal(object)
+
+    def __init__(self, project_id: int) -> None:
+        super().__init__()
+        self._pid = int(project_id)
+
+    def run(self) -> None:
+        try:
+            detail = scratch_api.fetch_project_detail(self._pid)
+        except Exception:  # noqa: BLE001 - metadata is additive, not required
+            detail = None
+        self.detail_ready.emit(detail)
 
 
 class CommentsWorker(QThread):
@@ -69,16 +92,22 @@ class ProjectDetailDialog(QDialog):
 
         self._build_ui()
 
-        # Detail fetch is synchronous: the dialog is modal and freshly opened,
-        # and consumers (smoke included) expect the fields populated on return.
-        self._apply_detail(self._try_fetch_detail())
+        self._detail_worker = ProjectDetailWorker(self._pid)
+        _ACTIVE_DIALOG_WORKERS.add(self._detail_worker)
+        self._detail_worker.detail_ready.connect(self._apply_detail)
+        self._detail_worker.finished.connect(
+            lambda worker=self._detail_worker: _release_dialog_worker(worker)
+        )
+        self._detail_worker.start()
 
-        self._comments_worker = CommentsWorker(self._pid, self)
+        self._comments_worker = CommentsWorker(self._pid)
+        _ACTIVE_DIALOG_WORKERS.add(self._comments_worker)
         self._comments_worker.comments_ready.connect(self._on_comments_ready)
         self._comments_worker.failed.connect(self._on_comments_failed)
-        # Deferred start: lets tests patch CommentsWorker.run before the thread
-        # launches and keeps constructors free of thread startup side effects.
-        QTimer.singleShot(0, lambda: self._comments_worker.start())
+        self._comments_worker.finished.connect(
+            lambda worker=self._comments_worker: _release_dialog_worker(worker)
+        )
+        QTimer.singleShot(0, self._comments_worker.start)
 
     # UI ----------------------------------------------------------------
 
@@ -205,12 +234,6 @@ class ProjectDetailDialog(QDialog):
         box.addWidget(self._comments_scroll, 1)
 
     # Data ---------------------------------------------------------------
-
-    def _try_fetch_detail(self) -> dict | None:
-        try:
-            return scratch_api.fetch_project_detail(self._pid)
-        except Exception:  # noqa: BLE001 - graceful degradation offline
-            return None
 
     def _apply_detail(self, detail: dict | None) -> None:
         self._detail = detail or None

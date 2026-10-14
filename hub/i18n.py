@@ -58,6 +58,10 @@ STRINGS = {
         # Settings dialog
         "settings_title": "Configuración",
         "settings_language": "Idioma",
+        "clear_cache": "Borrar proyectos descargados…",
+        "clear_cache_title": "Borrar caché de proyectos",
+        "clear_cache_confirm": "Se eliminarán los proyectos descargados, pero se conservarán miniaturas y favoritos. ¿Continuar?",
+        "cache_cleared": "Caché borrada: {count} proyectos.",
         "close": "Cerrar",
         # Project cards
         "card_meta": "ID: {pid} • @{author}",
@@ -162,6 +166,10 @@ STRINGS = {
         # Settings dialog
         "settings_title": "Settings",
         "settings_language": "Language",
+        "clear_cache": "Clear downloaded projects…",
+        "clear_cache_title": "Clear project cache",
+        "clear_cache_confirm": "Downloaded projects will be removed; thumbnails and favorites will be kept. Continue?",
+        "cache_cleared": "Cache cleared: {count} projects.",
         "close": "Close",
         # Project cards
         "card_meta": "ID: {pid} • @{author}",
