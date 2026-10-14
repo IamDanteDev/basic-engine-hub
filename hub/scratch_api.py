@@ -292,6 +292,50 @@ def fetch_project_detail(project_id) -> dict:
     }
 
 
+def fetch_user_profile(username) -> dict:
+    """Fetch a Scratch user's public profile for the signed-in user's own view.
+
+    The browser cannot call this endpoint (no CORS headers), which is why the web
+    side shows a username and nothing else; the desktop app talks to it from
+    Python, so the signed-in user's avatar and description live here.
+
+    Returns id, username, avatar (the 90x90 image), bio, status, country and the
+    raw joined timestamp. Raises :class:`ScratchAPIError` on any network/API/JSON
+    failure, mirroring :func:`fetch_project_detail`.
+    """
+    url = f"{API}/users/{username}"
+    try:
+        response = requests.get(url, timeout=TIMEOUT_LISTING, headers=_headers())
+    except requests.RequestException as exc:
+        raise ScratchAPIError(
+            i18n.tr("scratch_profile_error", username=username, exc=exc)
+        ) from exc
+    try:
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise _http_error(i18n.tr("scratch_http_action_profile"), response) from exc
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise ScratchAPIError(
+            i18n.tr("scratch_profile_invalid", username=username)
+        ) from exc
+    if not isinstance(payload, dict) or not payload.get("username"):
+        raise ScratchAPIError(i18n.tr("scratch_profile_invalid", username=username))
+    profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+    images = profile.get("images") if isinstance(profile.get("images"), dict) else {}
+    history = payload.get("history") if isinstance(payload.get("history"), dict) else {}
+    return {
+        "id": _as_int(payload.get("id")),
+        "username": str(payload.get("username") or ""),
+        "avatar": str(images.get("90x90") or ""),
+        "bio": str(profile.get("bio") or ""),
+        "status": str(profile.get("status") or ""),
+        "country": str(profile.get("country") or ""),
+        "joined": str(history.get("joined") or ""),
+    }
+
+
 def fetch_project_comments(project_id) -> list[dict]:
     """Fetch one page of the project's public comments (best-effort).
 
