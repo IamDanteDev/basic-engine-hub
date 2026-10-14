@@ -5,7 +5,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 from hub import cache, settings
-from hub.catalog import BLOCKED_PROJECT_IDS, PINNED_PROJECT_IDS, SOURCE_USER, STUDIO_ID
+from hub.catalog import (
+    BLOCKED_PROJECT_IDS,
+    FEATURED_PROJECT_ID,
+    PINNED_PROJECT_IDS,
+    SOURCE_USER,
+    STUDIO_ID,
+)
 
 
 class CacheTests(unittest.TestCase):
@@ -120,6 +126,34 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(listing.SOURCE_USER, SOURCE_USER)
         self.assertEqual(listing.BLOCKED_PROJECT_IDS, BLOCKED_PROJECT_IDS)
         self.assertEqual(listing.PINNED_PROJECT_IDS, PINNED_PROJECT_IDS)
+        self.assertEqual(listing.FEATURED_PROJECT_ID, FEATURED_PROJECT_ID)
+
+    def test_build_listing_flags_featured_and_inserted_pinned(self):
+        from web.listing import build_listing
+
+        studio_page = [
+            {"id": 300, "title": "Recent", "username": "author"},
+            {"id": FEATURED_PROJECT_ID, "title": "Featured", "username": "author"},
+            {"id": 100, "title": "Old", "username": "author"},
+        ]
+
+        def fake_fetch(url):
+            if "studios/" in url:
+                return studio_page
+            if "users/" in url:
+                return []
+            if url.endswith("/projects/1192855606"):
+                return {"id": 1192855606, "title": "Pinned", "author": {"username": "author"}}
+            raise RuntimeError(f"unexpected url: {url}")
+
+        with patch("web.listing.fetch_json", side_effect=fake_fetch):
+            built = build_listing()
+
+        by_id = {project["id"]: project for project in built}
+        self.assertTrue(by_id[FEATURED_PROJECT_ID].get("featured"))
+        self.assertTrue(by_id[1192855606].get("pinned"))
+        self.assertNotIn("featured", by_id[300])
+        self.assertNotIn("pinned", by_id[300])
 
     def test_pages_detail_enrichment_is_best_effort_and_normalized(self):
         from web.listing import _enrich_details

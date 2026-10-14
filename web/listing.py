@@ -8,6 +8,8 @@ menu can load it without CORS:
     studio + user, deduped by id (first occurrence wins, studio first)
     -> blocked ids removed
     -> missing pinned projects fetched and prepended at the front
+    -> the featured project and programmatic pinned inserts are flagged
+       (``featured``/``pinned``) so the browser menu can order and badge them
 
 Python stdlib only (urllib). No third-party dependencies.
 """
@@ -26,6 +28,7 @@ STUDIO_ID = str(_catalog["studio_id"])
 SOURCE_USER = str(_catalog["source_user"])
 BLOCKED_PROJECT_IDS = frozenset(map(int, _catalog["blocked_project_ids"]))
 PINNED_PROJECT_IDS = frozenset(map(int, _catalog["pinned_project_ids"]))
+FEATURED_PROJECT_ID = int(_catalog["featured_project_id"])
 
 PAGE_SIZE = 40
 MAX_ITEMS = 1000  # safety cap on total items fetched per endpoint
@@ -210,7 +213,11 @@ def build_listing(include_details: bool = False) -> list:
         except RuntimeError:
             continue  # best-effort: a failed pinned fetch must not hide the listing
         if pinned is not None:
+            pinned["pinned"] = True
             listing.insert(0, pinned)
+    for project in listing:
+        if project["id"] == FEATURED_PROJECT_ID:
+            project["featured"] = True
     return _enrich_details(listing) if include_details else listing
 
 

@@ -24,6 +24,7 @@ const UI = {
   favoriteAdd: "Añadir a favoritos",
   favoriteRemove: "Quitar de favoritos",
   defaultTitle: (id) => `Proyecto ${id}`,
+  featuredBadge: "★ Destacado",
 };
 
 const KEYS = {
@@ -158,12 +159,26 @@ function matches(project, needle) {
     String(project.id).includes(needle);
 }
 
+/* Display order: featured first, then programmatic pinned, then newest first.
+ * Scratch project ids grow over time, so id descending == most recent. */
+function projectRank(project) {
+  if (project.featured === true) return 2;
+  if (project.pinned === true) return 1;
+  return 0;
+}
+
+function byNewestFirst(a, b) {
+  return projectRank(b) - projectRank(a) || Number(b.id) - Number(a.id);
+}
+
 function render() {
   grid.textContent = "";
   const needle = searchEl.value.trim().toLowerCase();
-  const visibleProjects = projects.filter((project) =>
-    matches(project, needle) && (!favoritesOnly || favorites.has(String(project.id)))
-  );
+  const visibleProjects = projects
+    .filter((project) =>
+      matches(project, needle) && (!favoritesOnly || favorites.has(String(project.id)))
+    )
+    .sort(byNewestFirst);
   for (const project of visibleProjects) grid.appendChild(cardFor(project));
   favoritesFilter.setAttribute("aria-pressed", String(favoritesOnly));
   favoritesFilter.textContent = `Favoritos (${favorites.size})`;
@@ -177,6 +192,7 @@ function cardFor(project) {
   card.type = "button";
   card.className = "card";
   card.title = project.title || UI.defaultTitle(project.id);
+  if (project.featured === true) card.classList.add("featured");
 
   const hero = document.createElement("span");
   hero.className = "hero";
@@ -213,6 +229,12 @@ function cardFor(project) {
 
   const info = document.createElement("span");
   info.className = "info";
+  if (project.featured === true) {
+    const badge = document.createElement("span");
+    badge.className = "featured-badge";
+    badge.textContent = UI.featuredBadge;
+    info.appendChild(badge);
+  }
   const title = document.createElement("span");
   title.className = "title";
   title.textContent = project.title || UI.defaultTitle(project.id);

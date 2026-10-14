@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "basic-engine-hub-shell-v1";
+const CACHE_NAME = "basic-engine-hub-shell-v2";
 const SHELL_PATHS = [
   "./",
   "./index.html",
