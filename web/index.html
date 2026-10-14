@@ -6,6 +6,7 @@
   <title>Basic Engine Hub</title>
   <link rel="icon" href="../Assets/Icon.png" type="image/png">
   <link rel="stylesheet" href="style.css">
+  <script src="auth.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -20,6 +21,7 @@
              aria-label="Buscar proyectos">
             <button id="favorites-filter" class="btn" type="button" aria-pressed="false">Favoritos</button>
       <button id="refresh" class="btn" type="button">Actualizar</button>
+      <div id="session" class="session" hidden></div>
     </div>
   </header>
 
@@ -102,6 +104,41 @@
       <button id="edit-variable-cancel" class="btn" type="button">Cancelar</button>
       <button id="edit-variable-save" class="btn btn-primary" type="button">Guardar</button>
     </div>
+  </dialog>
+
+  <dialog id="auth-dialog" class="auth-dialog" aria-labelledby="auth-title">
+    <div class="dialog-top">
+      <h2 id="auth-title">Iniciar sesión con Scratch</h2>
+      <button id="auth-close" class="btn" type="button">Cancelar</button>
+    </div>
+    <p class="auth-intro">
+      Vas a recibir un código. Escribilo en el proyecto de autenticación de Scratch (o dejalo en un
+      comentario) y volvé a esta pestaña: la sesión se confirma sola.
+    </p>
+    <label class="auth-field" for="auth-method">
+      <span>Método</span>
+      <select id="auth-method">
+        <option value="cloud">Escribir el código en el proyecto</option>
+        <option value="comment">Comentar el código en el proyecto</option>
+        <option value="profile-comment">Comentar el código en tu perfil</option>
+      </select>
+    </label>
+    <div id="auth-username-row" hidden>
+      <label class="auth-field" for="auth-username">
+        <span>Tu usuario de Scratch</span>
+        <input id="auth-username" type="text" autocomplete="off" spellcheck="false" placeholder="usuario">
+      </label>
+      <button id="auth-continue" class="btn btn-primary" type="button">Continuar</button>
+    </div>
+    <div id="auth-ready" hidden>
+      <p id="auth-code" class="auth-code" aria-label="Código de acceso">—</p>
+      <div class="detail-actions">
+        <button id="auth-copy" class="btn" type="button">Copiar código</button>
+        <a id="auth-open" class="btn btn-primary" target="_blank" rel="noopener"
+           href="https://scratch.mit.edu/projects/1391621033/">Abrir el proyecto en Scratch</a>
+      </div>
+    </div>
+    <p id="auth-status" class="auth-status" role="status"></p>
   </dialog>
 </body>
 </html>

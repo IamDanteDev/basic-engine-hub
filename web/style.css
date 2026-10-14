@@ -321,7 +321,7 @@ body.player-open { overflow: hidden; }
   background: #000;
 }
 
-.detail-dialog, .variables-dialog {
+.detail-dialog, .variables-dialog, .auth-dialog {
   width: min(760px, calc(100vw - 28px));
   max-height: min(86vh, 900px);
   padding: 16px;
@@ -332,7 +332,7 @@ body.player-open { overflow: hidden; }
   border-radius: 10px;
 }
 
-.detail-dialog::backdrop, .variables-dialog::backdrop {
+.detail-dialog::backdrop, .variables-dialog::backdrop, .auth-dialog::backdrop {
   background: rgba(0, 0, 0, 0.72);
 }
 
@@ -401,6 +401,76 @@ body.player-open { overflow: hidden; }
 .variables-table th { position: sticky; top: 0; background: var(--surface-raised); color: var(--text-muted); }
 .variables-table td.value { max-width: 45vw; overflow-wrap: anywhere; white-space: pre-wrap; }
 .variables-table input[type="checkbox"] { accent-color: var(--accent); }
+
+/* Scratch sign-in (Scratch Auth) ---------------------------------------------- */
+
+.session {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.session-user {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.session-user:hover { text-decoration: underline; }
+
+.auth-intro {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.auth-field select, .auth-field input {
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.auth-field select:focus, .auth-field input:focus { outline: none; border-color: var(--accent); }
+
+#auth-username-row .btn { margin-bottom: 12px; }
+
+.auth-code {
+  margin: 0;
+  padding: 12px;
+  font-size: clamp(20px, 5vw, 30px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.12em;
+  text-align: center;
+  overflow-wrap: anywhere;
+  user-select: all;
+  color: var(--text-strong);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.auth-status {
+  margin: 12px 0 0;
+  min-height: 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
 
 .player-loading {
   position: absolute;

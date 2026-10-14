@@ -25,6 +25,21 @@ const UI = {
   favoriteRemove: "Quitar de favoritos",
   defaultTitle: (id) => `Proyecto ${id}`,
   featuredBadge: "★ Destacado",
+  signIn: "Iniciar sesión",
+  signOut: "Salir",
+  sessionUser: (name) => `Sesión de @${name} en este navegador`,
+  authChecking: "Comprobando la sesión…",
+  authRequesting: "Generando tu código…",
+  authWaitingProject: "Escribí el código en el proyecto y volvé a esta pestaña. Esperando la confirmación…",
+  authWaitingComment: "Dejá el código en un comentario del proyecto y volvé a esta pestaña. Esperando la confirmación…",
+  authWaitingProfile: "Dejá el código en un comentario de tu propio perfil y volvé a esta pestaña. Esperando la confirmación…",
+  authUsernameRequired: "Escribí tu usuario de Scratch y tocá Continuar.",
+  authCopied: "Código copiado.",
+  authCopyError: "No se pudo copiar; seleccioná el código a mano.",
+  authRequestFailed: "No se pudo generar el código. Revisá tu conexión e intentá de nuevo.",
+  authRejected: "La confirmación no corresponde a este sitio. Se canceló el inicio de sesión.",
+  authExpired: "El código venció. Cancelá y volvé a intentar.",
+  authCallbackFailed: "No se pudo confirmar la sesión. Iniciá sesión de nuevo.",
 };
 
 const KEYS = {
@@ -240,7 +255,7 @@ function cardFor(project) {
   title.textContent = project.title || UI.defaultTitle(project.id);
   const user = document.createElement("span");
   user.className = "user";
-  user.textContent = project.username ? `@${project.username}` : "";
+  user.textContent = authorLabel(project.username);
   info.append(title, user);
   card.append(hero, info);
   card.addEventListener("click", () => openDetails(project));
@@ -266,7 +281,7 @@ async function openDetails(project) {
   const id = String(project.id);
   document.getElementById("detail-title").textContent = project.title || UI.defaultTitle(id);
   const author = document.getElementById("detail-author");
-  author.textContent = project.username ? `@${project.username}` : "";
+  author.textContent = authorLabel(project.username);
   author.href = project.username
     ? `https://scratch.mit.edu/users/${encodeURIComponent(project.username)}/`
     : `https://scratch.mit.edu/projects/${encodeURIComponent(id)}/`;
@@ -627,6 +642,262 @@ function saveVariableEdit() {
   editingVariable = null;
 }
 
+/* ---- Scratch sign-in (Scratch Auth; pure core in web/auth.js) ------------- */
+/* The session is identity only: it shows who you are and marks your own
+ * projects with "(You)". Nothing else is gated. Only the username is stored;
+ * the privateCode lives while the dialog is open and is then dropped. */
+const Auth = typeof AuthCore !== "undefined" ? AuthCore : null;
+const AUTH_POLL_MS = 3000; /* how often we ask the service if the code was used */
+const AUTH_WINDOW_MS = 15 * 60 * 1000; /* how long the dialog keeps trying */
+const sessionEl = document.getElementById("session");
+const authDialog = document.getElementById("auth-dialog");
+const authMethodEl = document.getElementById("auth-method");
+const authUsernameRow = document.getElementById("auth-username-row");
+const authUsernameEl = document.getElementById("auth-username");
+const authReadyEl = document.getElementById("auth-ready");
+const authCodeEl = document.getElementById("auth-code");
+const authStatusEl = document.getElementById("auth-status");
+const authOpenEl = document.getElementById("auth-open");
+const authContinueEl = document.getElementById("auth-continue");
+const authStorage = (() => {
+  try {
+    return window.localStorage;
+  } catch {
+    return null; /* storage can be blocked; the app then runs signed out */
+  }
+})();
+const authState = { tokens: null, poll: null, refresh: null, deadline: 0 };
+let session = Auth && authStorage ? Auth.readSession(authStorage) : null;
+
+/* Username shown on a card or in the detail dialog, plus the literal "(You)"
+ * when the project belongs to the signed-in user. */
+function authorLabel(username) {
+  if (!username) return "";
+  return Auth ? Auth.authorLabel(username, session ? session.username : "") : `@${username}`;
+}
+
+function setAuthStatus(text) {
+  if (authStatusEl) authStatusEl.textContent = text || "";
+}
+
+function fetchImpl(url) {
+  return fetch(url);
+}
+
+function renderSession() {
+  if (!sessionEl) return;
+  sessionEl.textContent = "";
+  if (!Auth) {
+    sessionEl.hidden = true;
+    return;
+  }
+  sessionEl.hidden = false;
+  if (session) {
+    const link = document.createElement("a");
+    link.className = "session-user";
+    link.href = `https://scratch.mit.edu/users/${encodeURIComponent(session.username)}/`;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = `@${session.username}`;
+    link.title = UI.sessionUser(session.username);
+    const out = document.createElement("button");
+    out.type = "button";
+    out.className = "btn session-out";
+    out.textContent = UI.signOut;
+    out.addEventListener("click", signOut);
+    sessionEl.append(link, out);
+  } else {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn session-signin";
+    button.textContent = UI.signIn;
+    button.addEventListener("click", () => openAuthDialog());
+    sessionEl.appendChild(button);
+  }
+}
+
+function refreshGrid() {
+  if (loaded) render();
+}
+
+function signOut() {
+  if (Auth && authStorage) Auth.clearSession(authStorage);
+  session = null;
+  renderSession();
+  refreshGrid();
+}
+
+function openAuthDialog(options = {}) {
+  if (!Auth || !authDialog) return;
+  if (options.method && Auth.isKnownMethod(options.method)) authMethodEl.value = options.method;
+  authDialog.showModal();
+  updateAuthDialog();
+  startSignIn();
+}
+
+function updateAuthDialog() {
+  const method = authMethodEl.value;
+  const needsUsername = method === "profile-comment";
+  const ready = Boolean(authState.tokens);
+  authUsernameRow.hidden = !needsUsername;
+  authReadyEl.hidden = !ready;
+  if (ready) authCodeEl.textContent = authState.tokens.publicCode || "—";
+}
+
+function authWaitingMessage(method) {
+  if (method === "profile-comment") return UI.authWaitingProfile;
+  if (method === "comment") return UI.authWaitingComment;
+  return UI.authWaitingProject;
+}
+
+function stopPolling() {
+  if (authState.poll) clearInterval(authState.poll);
+  authState.poll = null;
+}
+
+function stopAuthTimers() {
+  stopPolling();
+  if (authState.refresh) clearTimeout(authState.refresh);
+  authState.refresh = null;
+}
+
+/* Ask the service for a fresh token pair (a new code) for the chosen method. */
+async function startSignIn() {
+  if (!Auth) return;
+  const method = authMethodEl.value;
+  const username = authUsernameEl.value.trim();
+  if (method === "profile-comment" && !username) {
+    setAuthStatus(UI.authUsernameRequired);
+    return;
+  }
+  stopAuthTimers();
+  authState.tokens = null;
+  updateAuthDialog();
+  setAuthStatus(UI.authRequesting);
+  try {
+    const tokens = await Auth.requestTokens(fetchImpl, {
+      redirect: Auth.buildCallbackUrl(location),
+      method,
+      username,
+    });
+    if (!authDialog.open) return;
+    authState.tokens = tokens;
+    authState.deadline = Date.now() + AUTH_WINDOW_MS;
+    updateAuthDialog();
+    setAuthStatus(authWaitingMessage(method));
+    authState.poll = setInterval(pollSignIn, AUTH_POLL_MS);
+    /* The service expires a token pair after 5 minutes; refresh before that. */
+    authState.refresh = setTimeout(() => {
+      if (authDialog.open && authState.tokens) startSignIn();
+    }, Auth.AUTH_CODE_TTL_MS);
+  } catch (error) {
+    report("error", "No se pudo generar el código de acceso.", error);
+    setAuthStatus(UI.authRequestFailed);
+  }
+}
+
+async function pollSignIn() {
+  if (!authState.tokens || !authState.tokens.privateCode) return;
+  if (Date.now() > authState.deadline) {
+    stopAuthTimers();
+    setAuthStatus(UI.authExpired);
+    return;
+  }
+  let result;
+  try {
+    result = await Auth.verifyCode(fetchImpl, { privateCode: authState.tokens.privateCode });
+  } catch (error) {
+    report("warn", "El sondeo de la sesión falló; se reintenta en el próximo ciclo.", error);
+    return;
+  }
+  if (!result.valid) return;
+  if (!Auth.isTrustedRedirect(result.redirect, Auth.buildCallbackUrl(location))) {
+    stopAuthTimers();
+    authState.tokens = null;
+    report("warn", "La confirmación apunta a otro sitio; se descarta.", { redirect: result.redirect });
+    setAuthStatus(UI.authRejected);
+    return;
+  }
+  completeSignIn(result.username, authMethodEl.value);
+}
+
+function completeSignIn(username, method) {
+  stopAuthTimers();
+  if (!Auth || !authStorage || !username) {
+    setAuthStatus(UI.authCallbackFailed);
+    return;
+  }
+  session = Auth.writeSession(authStorage, { username, method: method || "cloud", at: Date.now() });
+  authState.tokens = null;
+  if (authDialog && authDialog.open) authDialog.close();
+  renderSession();
+  refreshGrid();
+  report("info", "Sesión de Scratch iniciada.", { username });
+}
+
+/* Fallback path: the service sent the browser back with ?privateCode=... */
+async function handleAuthCallback() {
+  if (!Auth) return;
+  const privateCode = Auth.extractPrivateCode(location.search);
+  if (!privateCode) return;
+  stripAuthQuery(); /* never leave the code in the address bar */
+  setAuthStatus(UI.authChecking);
+  let result = null;
+  try {
+    result = await Auth.verifyCode(fetchImpl, { privateCode });
+  } catch (error) {
+    report("warn", "No se pudo verificar el código que llegó en la URL.", error);
+  }
+  if (result && result.valid && Auth.isTrustedRedirect(result.redirect, Auth.buildCallbackUrl(location))) {
+    completeSignIn(result.username, "cloud");
+    return;
+  }
+  report("warn", "El código de la URL no produjo una sesión válida.");
+  setAuthStatus(UI.authCallbackFailed);
+}
+
+function stripAuthQuery() {
+  try {
+    history.replaceState(null, "", `${location.pathname}${location.hash}`);
+  } catch {
+    /* history can be unavailable (file://); the code in the URL is then left as is */
+  }
+}
+
+function initAuth() {
+  if (!Auth || !sessionEl || !authDialog) {
+    if (sessionEl) sessionEl.hidden = true;
+    return;
+  }
+  authOpenEl.href = Auth.AUTH_PROJECT_URL;
+  renderSession();
+  authMethodEl.addEventListener("change", () => {
+    stopAuthTimers();
+    authState.tokens = null;
+    updateAuthDialog();
+    if (authMethodEl.value === "profile-comment") setAuthStatus(UI.authUsernameRequired);
+    else startSignIn();
+  });
+  authUsernameEl.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") startSignIn();
+  });
+  authContinueEl.addEventListener("click", startSignIn);
+  document.getElementById("auth-copy").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(authCodeEl.textContent);
+      setAuthStatus(UI.authCopied);
+    } catch {
+      setAuthStatus(UI.authCopyError);
+    }
+  });
+  document.getElementById("auth-close").addEventListener("click", () => authDialog.close());
+  authDialog.addEventListener("close", () => {
+    stopAuthTimers();
+    authState.tokens = null;
+  });
+  handleAuthCallback();
+}
+
 /* ---- Events --------------------------------------------------------------- */
 searchEl.value = readJSON(KEYS.search, "");
 searchEl.addEventListener("input", () => {
@@ -679,4 +950,5 @@ if (projects.length) {
   render();
   statusEl.textContent = UI.offline;
 }
+initAuth();
 loadListing();
