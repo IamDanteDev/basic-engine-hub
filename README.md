@@ -69,6 +69,7 @@ download endpoint.
 
 ```bash
 python -m unittest discover -s tests -v
+node --test
 ```
 
 ## Web version
@@ -87,6 +88,25 @@ the browser; it does not write `.sb3` files to disk. On GitHub Pages, playback
 uses the TurboWarp embed because static hosting cannot proxy Scratch's
 token-protected project downloads. Project assets and comments still require
 an internet connection.
+
+### Scratch sign-in
+
+The web menu can sign in with Scratch through Scratch Auth, using this
+repository's own auth project
+(https://scratch.mit.edu/projects/1391621033/). The browser talks to the
+service directly (`https://auth-api.itinerary.eu.org`), so the same flow works
+on GitHub Pages and from the local server, with no proxy.
+
+`web/auth.js` asks the service for a code pair, the dialog shows the public
+code and links to the auth project, and the page polls
+`/auth/verifyToken/<privateCode>` until the service confirms the username. Only
+the username is kept in `localStorage`; the private code is never persisted,
+and a confirmation that points at another site is rejected.
+
+The session is identity only: the header shows who is signed in, and the author
+name of your own projects gets `(You)`. The auth project id and the supported
+methods (`cloud`, `comment`, `profile-comment`) live in `web/auth.js`.
+`tests/auth.test.js` covers the rules with `node --test tests/`.
 
 ## Fedora / headless notes
 
