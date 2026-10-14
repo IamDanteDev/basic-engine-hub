@@ -25,7 +25,7 @@ jobs:
       - name: Build listing.json from the Scratch API
         run: python web/listing.py --with-details --out listing.json
       - name: Verify Pages root entry
-        run: test -f index.html && test -f listing.json && test -f web/app.js && test -f web/style.css
+        run: test -f index.html && test -f listing.json && git ls-files --error-unmatch listing.json && test -f web/app.js && test -f web/style.css
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
