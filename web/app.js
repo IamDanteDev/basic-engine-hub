@@ -57,6 +57,10 @@ const variablesDialog = document.getElementById("variables-dialog");
 const editVariableDialog = document.getElementById("edit-variable-dialog");
 const localControls = document.getElementById("local-player-controls");
 
+function report(level, message, details) {
+  console[level](`[Basic Engine Hub] ${message}`, ...(details === undefined ? [] : [details]));
+}
+
 let projects = readJSON(KEYS.listing, []);
 if (!Array.isArray(projects)) projects = [];
 const storedFavorites = readJSON(KEYS.favorites, []);
@@ -105,12 +109,15 @@ async function loadListing() {
     projects = await fetchListingOrFallback();
     loaded = true;
     writeJSON(KEYS.listing, projects);
+    report("info", "Listado cargado.", { count: projects.length });
     render();
-  } catch {
+  } catch (error) {
+    report("error", "No se pudo cargar el listado.", error);
     loaded = projects.length > 0;
     if (loaded) {
       render();
       statusEl.textContent = UI.offline;
+      report("warn", "Usando el listado guardado sin conexión.", { count: projects.length });
     } else {
       errorText.textContent = UI.loadError;
       errorBox.classList.remove("hidden");
@@ -274,9 +281,13 @@ async function fetchApiJSON(url) {
   const timeout = setTimeout(() => controller.abort(), 7000);
   try {
     const response = await fetch(url, { signal: controller.signal, cache: "no-store" });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      report("warn", "La consulta de detalles falló.", { url, status: response.status });
+      return null;
+    }
     return await response.json();
-  } catch {
+  } catch (error) {
+    report("warn", "No se pudieron consultar los detalles.", { url, error });
     return null;
   } finally {
     clearTimeout(timeout);
@@ -357,9 +368,13 @@ async function saveProject(id, bytes, project) {
 async function getProjectBytes(id) {
   try {
     const cached = await readProject(id);
-    if (cached) return cached;
-  } catch {
+    if (cached) {
+      report("info", "Proyecto abierto desde la caché del navegador.", { id });
+      return cached;
+    }
+  } catch (error) {
     // IndexedDB can be disabled or full; continue without persistent caching.
+    report("warn", "No se pudo leer la caché del navegador.", { id, error });
   }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
@@ -368,16 +383,24 @@ async function getProjectBytes(id) {
       signal: controller.signal,
       cache: "no-store",
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      report("error", "Falló la descarga del proyecto.", { id, status: response.status });
+      return null;
+    }
     const bytes = await response.arrayBuffer();
-    if (!bytes.byteLength) return null;
+    if (!bytes.byteLength) {
+      report("error", "La descarga del proyecto estaba vacía.", { id });
+      return null;
+    }
     try {
       await saveProject(id, bytes, activeProject);
-    } catch {
+    } catch (error) {
+      report("warn", "No se pudo guardar el proyecto en la caché.", { id, error });
       statusEl.textContent = "Proyecto cargado; el navegador no pudo guardarlo en IndexedDB.";
     }
     return bytes;
-  } catch {
+  } catch (error) {
+    report("error", "No se pudo descargar el proyecto.", { id, error });
     return null;
   } finally {
     clearTimeout(timeout);
@@ -386,6 +409,7 @@ async function getProjectBytes(id) {
 
 /* ---- Player --------------------------------------------------------------- */
 async function openPlayer(project) {
+  report("info", "Abriendo proyecto.", { id: String(project.id) });
   activeProject = project;
   detailDialog.close();
   captureCheckedVariables();
@@ -421,6 +445,7 @@ function playLocalProject(project, bytes) {
     } catch (error) {
       playerLoading.hidden = true;
       statusEl.textContent = error.message;
+      report("error", "Falló la carga del proyecto en el reproductor local.", { id: String(project.id), error });
     }
   };
   playerFrame.src = playerUrl();
