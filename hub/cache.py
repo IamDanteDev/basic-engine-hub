@@ -6,6 +6,10 @@ from pathlib import Path
 from hub.paths import APP_ROOT, DATA_DIR
 
 BASE = APP_ROOT
+ASSETS = BASE / "Assets"
+PLACEHOLDER_THUMBNAIL = ASSETS / "Placeholders" / "thumbnail.png"
+PLACEHOLDER_AVATAR = ASSETS / "Placeholders" / "profile.png"
+TITLE_DIR = ASSETS / "Lengs" / "Titles"
 PROJECTS = DATA_DIR / "projects"
 THUMBNAILS = DATA_DIR / "thumbnails"
 AVATARS = DATA_DIR / "avatars"

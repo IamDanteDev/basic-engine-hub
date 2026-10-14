@@ -6,7 +6,7 @@ from hub.paths import APP_ROOT, CONFIG_DIR
 
 PATH = CONFIG_DIR / "settings.json"
 LEGACY_PATH = APP_ROOT / "settings.json"
-DEFAULTS = {"language": "es"}
+DEFAULTS = {"language": "en"}
 
 
 def get(key, default=None):

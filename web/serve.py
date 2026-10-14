@@ -15,16 +15,32 @@ import sys
 import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
+ASSETS_DIR = PROJECT_ROOT / "Assets"
 for import_path in (str(BASE_DIR), str(PROJECT_ROOT)):
     if import_path not in sys.path:
         sys.path.insert(0, import_path)
 
 from hub import scratch_api
 from listing import build_listing  # module sibling: works when running `python web/serve.py`
+
+
+def asset_path(name: str) -> Path | None:
+    """Resolve a /Assets/<name> request to a file inside the repository Assets/.
+
+    The entry points reference the shared art as ../Assets/..., which is
+    /Assets/... once this server owns web/ as the document root; GitHub Pages
+    serves that path natively. Names are percent-decoded (the language title
+    images include a non-ASCII filename) and anything resolving outside
+    Assets/ is refused.
+    """
+    candidate = (ASSETS_DIR / unquote(name)).resolve()
+    if not candidate.is_file() or ASSETS_DIR.resolve() not in candidate.parents:
+        return None
+    return candidate
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -37,6 +53,9 @@ class Handler(SimpleHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/sw.js":
             self._serve_root_script()
+            return
+        if path.startswith("/Assets/"):
+            self._serve_asset(path[len("/Assets/"):])
             return
         if path == "/api/listing":
             self._serve_listing()
@@ -59,6 +78,18 @@ class Handler(SimpleHTTPRequestHandler):
         payload = script.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", mimetypes.guess_type(script.name)[0] or "text/javascript")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _serve_asset(self, name: str) -> None:
+        asset = asset_path(name)
+        if asset is None:
+            self.send_error(404, "Not Found")
+            return
+        payload = asset.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", mimetypes.guess_type(asset.name)[0] or "application/octet-stream")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)

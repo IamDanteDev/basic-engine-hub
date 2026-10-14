@@ -7,11 +7,17 @@ const SHELL_PATHS = [
   "./web/index.html",
   "./web/app.js",
   "./web/auth.js",
+  "./web/i18n.js",
   "./web/style.css",
   "./web/player.html",
-  "./app.js",
-  "./style.css",
-  "./player.html",
+  /* Placeholder art and language titles are the offline fallbacks themselves:
+   * without them the menu shows empty frames and text-only language options. */
+  "./Assets/Placeholders/thumbnail.png",
+  "./Assets/Placeholders/profile.png",
+  "./Assets/Lengs/Titles/español.png",
+  "./Assets/Lengs/Titles/francais.png",
+  "./Assets/Lengs/Titles/portugues.png",
+  "./Assets/Lengs/Titles/english.png",
 ];
 
 self.addEventListener("install", (event) => {

@@ -22,6 +22,11 @@ from hub import cache
 BASE = Path(__file__).resolve().parent.parent
 WEB = BASE / "web"
 VENDOR_ALLOWED = {"scaffolding-with-music.js"}
+# Assets the player page itself loads from the web root. This server routes a
+# fixed list of paths instead of serving WEB as a directory, so anything the
+# markup references has to be listed here: a missing entry answers 404, leaves
+# I18n undefined and renders the page's raw key names instead of copy.
+ROOT_ASSETS_ALLOWED = {"i18n.js"}
 
 
 class _PlayerHandler(SimpleHTTPRequestHandler):
@@ -37,6 +42,8 @@ class _PlayerHandler(SimpleHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/":
             self._serve_file(WEB / "player.html")
+        elif path.lstrip("/") in ROOT_ASSETS_ALLOWED:
+            self._serve_file(WEB / path.lstrip("/"))
         elif path.startswith("/vendor/"):
             name = path[len("/vendor/"):]
             if name in VENDOR_ALLOWED:

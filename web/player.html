@@ -33,58 +33,63 @@
   .clone-group-title { font-weight: 600; color: #ff8c42; margin: 6px 0 2px; }
   .clone-row { color: #cfd3da; font-family: ui-monospace, monospace; padding: 1px 0; }
   .clone-empty { color: #9aa0a8; text-align: center; padding: 8px 0; }
+
+  /* TurboWarp chrome, dark ----------------------------------------------------
+     Scaffolding hardcodes a light UI for the pieces it draws around the stage:
+     the variable/list monitors, the "ask and wait" prompt and the stage context
+     menu. Its stylesheet is injected as #sc-styles when the bundle loads, after
+     this block, so each override carries an extra element type (`body .sc-...`
+     beats the bundle's bare class) instead of depending on the order. */
+  body .sc-monitor-root { background: #181c22; color: #cfd3da; border-color: #2b2f36; }
+  body .sc-monitor-list-label { background-color: #1f242c; border-bottom-color: #2b2f36; }
+  body .sc-monitor-list-footer { background-color: #1f242c; }
+  body .sc-question-root { color: #e8e8e8; }
+  body .sc-question-inner { background: #181c22; border-color: #2b2f36; }
+  body .sc-question-input { border-color: #2b2f36; }
+  body .sc-context-menu { color: #e8e8e8; box-shadow: 0 0 5px 1px hsla(0, 0%, 0%, 0.6); }
+  body .sc-context-menu-item { background-color: #181c22; }
 </style>
 </head>
 <body>
 <div id="player-root">
   <div id="stage"></div>
-  <button id="fs-exit" type="button" aria-label="Salir de pantalla completa" title="Salir de pantalla completa">✕</button>
+  <button id="fs-exit" type="button" aria-label="Salir de pantalla completa" data-i18n-aria-label="fsExit" title="Salir de pantalla completa" data-i18n-title="fsExit">✕</button>
   <div id="clones-panel" class="hidden"></div>
-  <div id="overlay"><div id="overlay-text">Select a project</div></div>
+  <div id="overlay"><div id="overlay-text">Elige un proyecto</div></div>
 </div>
+<script src="i18n.js"></script>
 <script src="vendor/scaffolding-with-music.js"></script>
 <script>
 "use strict";
 
-// UI language: read from the query string (?lang=es|en); the desktop shell
-// switches it live through window.setPlayerLanguage(lang).
-let uiLang = new URLSearchParams(location.search).get("lang") === "en" ? "en" : "es";
+// UI language: the shared core (web/i18n.js) resolves it in this order — the
+// ?lang=<code> the desktop shell appends, then the stored choice, then the
+// default. The shell switches it live through window.setPlayerLanguage(lang).
+// This page owns no strings of its own any more: it asks the same table the
+// menu uses, so a language the app offers is a language the player speaks.
+const tr = (key) => (typeof I18n === "undefined" ? key : I18n.tr(key));
 
-// Web-owned UI strings. Project titles, sprite names and numbers stay raw.
-const UI = {
-  es: {
-    selectProject: "Elige un proyecto",
-    loadingProject: "Cargando proyecto…",
-    errorPrefix: "Error: ",
-    bundleMissing: "Falta el paquete de Scaffolding",
-    noActiveClones: "Sin clones activos",
-    noProject: "Sin proyecto",
-    fsExit: "Salir de pantalla completa"
-  },
-  en: {
-    selectProject: "Select a project",
-    loadingProject: "Loading project…",
-    errorPrefix: "Error: ",
-    bundleMissing: "Scaffolding bundle missing",
-    noActiveClones: "No active clones",
-    noProject: "No project",
-    fsExit: "Exit fullscreen"
-  }
-};
-
-function uiText(key, ...args) {
-  const dict = UI[uiLang] || UI.es;
-  return Object.prototype.hasOwnProperty.call(dict, key) ? dict[key] : key;
-}
-
-// Apply the initial static texts so a non-default language never flashes.
 const overlayTextEl = document.getElementById("overlay-text");
-if (overlayTextEl) overlayTextEl.textContent = uiText("selectProject");
-const fsExitEl0 = document.getElementById("fs-exit");
-if (fsExitEl0) {
-  fsExitEl0.setAttribute("aria-label", uiText("fsExit"));
-  fsExitEl0.title = uiText("fsExit");
+
+/* Re-apply every visible web-owned text. The static hooks (the fullscreen
+ * button) and the document language are the core's job; the overlay is the one
+ * dynamic surface, and only the pre-project prompt can be re-applied verbatim
+ * because the loading and error texts are transient and the error one embeds a
+ * raw message. */
+function applyPlayerLanguage() {
+  if (typeof I18n !== "undefined") I18n.apply(document);
+  const overlay = document.getElementById("overlay");
+  const vm = scaffolding && scaffolding.vm;
+  if (overlay && !overlay.classList.contains("hidden") &&
+      (!vm || !vm.runtime || !vm.runtime.targets)) {
+    showOverlay(tr("selectProject"));
+  }
+  if (clonesVisible) renderClones();
 }
+
+// Apply the initial copy so a non-default language never flashes.
+if (overlayTextEl) overlayTextEl.textContent = tr("selectProject");
+if (typeof I18n !== "undefined") I18n.onChange(applyPlayerLanguage);
 
 let scaffolding = null;
 let storage = null;
@@ -113,7 +118,7 @@ function applyTwConfig() {
 
 function boot() {
   if (typeof Scaffolding === "undefined") {
-    showOverlay(uiText("bundleMissing"));
+    showOverlay(tr("bundleMissing"));
     return;
   }
   scaffolding = new Scaffolding.Scaffolding();
@@ -125,6 +130,12 @@ function boot() {
   scaffolding.resizeMode = "preserve-ratio";
   scaffolding.usePackagedRuntime = false;
   scaffolding.setup();
+  // TurboWarp ships a white stage: its renderer clears to white, so everything
+  // around the 16:9 stage -- and the whole player until a project loads -- came
+  // up light on a page that is dark. Clear to this page's background instead.
+  if (scaffolding.renderer && scaffolding.renderer.setBackgroundColor) {
+    scaffolding.renderer.setBackgroundColor(16 / 255, 18 / 255, 22 / 255); // #101216
+  }
   applyTwConfig();
   scaffolding.appendTo(document.getElementById("stage"));
   storage = scaffolding.storage;
@@ -137,38 +148,38 @@ function boot() {
     (asset) =>
       `https://assets.scratch.mit.edu/internalapi/asset/${asset.assetId}.${asset.dataFormat}/get/`
   );
-  showOverlay(uiText("selectProject"));
+  showOverlay(tr("selectProject"));
 }
 
 async function loadScratchProject(id) {
   if (!scaffolding) {
-    showOverlay(uiText("bundleMissing"));
+    showOverlay(tr("bundleMissing"));
     return "error: scaffolding bundle missing";
   }
   try {
-    showOverlay(uiText("loadingProject"));
+    showOverlay(tr("playerLoading"));
     const response = await fetch("/projects/" + encodeURIComponent(id) + ".sb3");
     if (!response.ok) throw new Error("HTTP " + response.status);
     const buffer = await response.arrayBuffer();
     return await loadScratchProjectBytes(buffer);
   } catch (err) {
-    showOverlay(uiText("errorPrefix") + err.message);
+    showOverlay(tr("errorPrefix") + err.message);
     return "error: " + err.message;
   }
 }
 
 async function loadScratchProjectBytes(buffer) {
   if (!scaffolding) {
-    showOverlay(uiText("bundleMissing"));
+    showOverlay(tr("bundleMissing"));
     return "error: scaffolding bundle missing";
   }
   try {
-    showOverlay(uiText("loadingProject"));
+    showOverlay(tr("playerLoading"));
     await scaffolding.loadProject(buffer);
     hideOverlay();
     return "ok";
   } catch (err) {
-    showOverlay(uiText("errorPrefix") + err.message);
+    showOverlay(tr("errorPrefix") + err.message);
     return "error: " + err.message;
   }
 }
@@ -216,7 +227,7 @@ function renderClones() {
   if (!targets) {
     const empty = document.createElement("div");
     empty.className = "clone-empty";
-    empty.textContent = uiText("noProject");
+    empty.textContent = tr("noProject");
     panel.appendChild(empty);
     return;
   }
@@ -224,7 +235,7 @@ function renderClones() {
   if (clones.length === 0) {
     const empty = document.createElement("div");
     empty.className = "clone-empty";
-    empty.textContent = uiText("noActiveClones");
+    empty.textContent = tr("noActiveClones");
     panel.appendChild(empty);
     return;
   }
@@ -379,7 +390,7 @@ async function switchProject(oldPid, oldSavedIds, newPid, newSavedIds) {
       // 2) stop all scripts so old sprites/monitors stop showing old state
       if (typeof scaffolding.stopAll === "function") scaffolding.stopAll();
     }
-    showOverlay(uiText("loadingProject"));
+    showOverlay(tr("playerLoading"));
     const response = await fetch("/projects/" + encodeURIComponent(newPid) + ".sb3");
     if (!response.ok) throw new Error("HTTP " + response.status);
     const buffer = await response.arrayBuffer();
@@ -396,30 +407,17 @@ async function switchProject(oldPid, oldSavedIds, newPid, newSavedIds) {
     hideOverlay();
     return "ok";
   } catch (err) {
-    showOverlay(uiText("errorPrefix") + err.message);
+    showOverlay(tr("errorPrefix") + err.message);
     return "error: " + err.message;
   }
 }
 window.switchProject = switchProject;
 
-// Language switch from the desktop shell: re-apply every visible web-owned text.
+// Language switch from the desktop shell: hand it to the core, which notifies
+// every surface (this page's own re-apply above, and the menu's if it is open).
 window.setPlayerLanguage = function (lang) {
-  uiLang = lang === "en" ? "en" : "es";
-  const overlay = document.getElementById("overlay");
-  if (overlay && !overlay.classList.contains("hidden")) {
-    // Only the pre-project prompt can be re-applied verbatim; loading/error
-    // overlays are transient and errors embed a raw message.
-    const vm = scaffolding && scaffolding.vm;
-    if (!vm || !vm.runtime || !vm.runtime.targets) {
-      showOverlay(uiText("selectProject"));
-    }
-  }
-  if (clonesVisible) renderClones();
-  const fs = document.getElementById("fs-exit");
-  if (fs) {
-    fs.setAttribute("aria-label", uiText("fsExit"));
-    fs.title = uiText("fsExit");
-  }
+  if (typeof I18n === "undefined" || !I18n.isKnownCode(lang)) return;
+  I18n.setLanguage(lang);
 };
 
 boot();

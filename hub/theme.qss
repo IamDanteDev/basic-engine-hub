@@ -22,6 +22,13 @@ QPushButton[role="primary"]:pressed { background: #e6792e; }
 QPushButton[role="danger"] { color: #ef7c74; }
 QPushButton[role="danger"]:hover { background: #2a1f22; border-color: #6e3a38; }
 
+/* Language tiles in Settings: the label is the language's own title art, so the
+   checked tile is the only selection cue (accent border, like the primary role). */
+QToolButton#languageChoice { background: #181c22; border: 2px solid #2b2f36; border-radius: 8px;
+                             padding: 5px 8px; }
+QToolButton#languageChoice:hover { background: #1f242c; border-color: #3a4754; }
+QToolButton#languageChoice:checked { background: #1f242c; border-color: #ff8c42; }
+
 QLineEdit { background: #181c22; border: 1px solid #2b2f36; border-radius: 8px;
             padding: 9px 12px; font-size: 13px; color: #e8e8e8; }
 QLineEdit:focus { border-color: #ff8c42; }

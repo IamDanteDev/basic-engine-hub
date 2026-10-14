@@ -1,38 +1,46 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Basic Engine Hub</title>
+  <meta name="description" data-i18n-content="metaDescription" content="Menú de proyectos de Basic Engine Hub: estudio y perfil de Alvaro_Games19, reproducibles en TurboWarp.">
   <link rel="icon" href="../Assets/Icon.png" type="image/png">
   <link rel="stylesheet" href="style.css">
+  <script src="i18n.js" defer></script>
   <script src="auth.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
   <header class="app-header">
     <div class="app-brand">
-      <img class="app-logo" src="../Assets/Icon.png" alt="Basic Engine Hub logo" width="32" height="32">
+      <img class="app-logo" src="../Assets/Icon.png" alt="Basic Engine Hub logo" data-i18n-alt="logoAlt" width="32" height="32">
       <h1 class="app-title">Basic Engine Hub</h1>
     </div>
     <div class="header-actions">
       <input id="search" class="search" type="search"
-             placeholder="Buscar proyectos…" autocomplete="off"
-             aria-label="Buscar proyectos">
-            <button id="favorites-filter" class="btn" type="button" aria-pressed="false">Favoritos</button>
-      <button id="refresh" class="btn" type="button">Actualizar</button>
+             placeholder="Buscar proyectos…" data-i18n-placeholder="searchPlaceholder" autocomplete="off"
+             aria-label="Buscar proyectos" data-i18n-aria-label="searchLabel">
+      <button id="favorites-filter" class="btn" type="button" aria-pressed="false" data-i18n="favorites">Favoritos</button>
+      <button id="refresh" class="btn" type="button" data-i18n="refresh">Actualizar</button>
+      <select id="language" class="language-select" aria-label="Idioma" data-i18n-aria-label="languageLabel"></select>
       <div id="session" class="session" hidden></div>
     </div>
   </header>
 
-  <p id="status" class="status" role="status">Cargando proyectos…</p>
+  <p id="status" class="status" role="status" data-i18n="loading">Cargando proyectos…</p>
 
   <main id="grid" class="grid" aria-live="polite"></main>
 
+  <dialog id="language-chooser" class="language-chooser" aria-labelledby="language-chooser-title">
+    <h2 id="language-chooser-title" data-i18n="languageChooserTitle">Elige tu idioma</h2>
+    <div id="language-chooser-options" class="language-chooser-options"></div>
+  </dialog>
+
   <dialog id="detail-dialog" class="detail-dialog" aria-labelledby="detail-title">
     <div class="dialog-top">
-      <a id="detail-open-scratch" class="btn" target="_blank" rel="noopener">Abrir en Scratch</a>
-      <button id="detail-close" class="btn" type="button" aria-label="Cerrar detalles">Cerrar</button>
+      <a id="detail-open-scratch" class="btn" target="_blank" rel="noopener" data-i18n="detailOpenScratch">Abrir en Scratch</a>
+      <button id="detail-close" class="btn" type="button" aria-label="Cerrar detalles" data-i18n-aria-label="detailCloseLabel" data-i18n="detailClose">Cerrar</button>
     </div>
     <div class="detail-layout">
       <img id="detail-cover" class="detail-cover" alt="" hidden>
@@ -41,101 +49,102 @@
         <a id="detail-author" class="detail-author" target="_blank" rel="noopener"></a>
         <p id="detail-stats" class="detail-stats"></p>
         <div class="detail-actions">
-          <button id="detail-play" class="btn btn-primary" type="button">Jugar</button>
+          <button id="detail-play" class="btn btn-primary" type="button" data-i18n="detailPlay">Jugar</button>
           <button id="detail-favorite" class="btn" type="button"></button>
         </div>
       </div>
     </div>
     <section class="detail-section">
-      <h3>Descripción</h3>
-      <p id="detail-description">Cargando…</p>
-      <h3>Instrucciones</h3>
-      <p id="detail-instructions">Cargando…</p>
+      <h3 data-i18n="descriptionTitle">Descripción</h3>
+      <p id="detail-description" data-i18n="loadingShort">Cargando…</p>
+      <h3 data-i18n="instructionsTitle">Instrucciones</h3>
+      <p id="detail-instructions" data-i18n="loadingShort">Cargando…</p>
     </section>
     <section class="detail-section">
-      <h3>Comentarios</h3>
-      <div id="detail-comments" class="comments-list" aria-live="polite">Cargando…</div>
+      <h3 data-i18n="commentsTitle">Comentarios</h3>
+      <div id="detail-comments" class="comments-list" aria-live="polite" data-i18n="loadingShort">Cargando…</div>
     </section>
   </dialog>
 
   <div id="error" class="error hidden">
     <p id="error-text" class="error-text"></p>
-    <button id="retry" class="btn btn-primary" type="button">Reintentar</button>
+    <button id="retry" class="btn btn-primary" type="button" data-i18n="retry">Reintentar</button>
   </div>
 
   <div id="player-overlay" class="overlay hidden">
     <div class="overlay-top">
-      <button id="back" class="btn" type="button">← Volver al menú</button>
+      <button id="back" class="btn" type="button" data-i18n="back">← Volver al menú</button>
       <div id="local-player-controls" class="player-controls" hidden>
-        <button id="player-flag" class="btn" type="button" title="Iniciar">Bandera</button>
-        <button id="player-pause" class="btn" type="button" title="Pausar">Pausar</button>
-        <button id="player-stop" class="btn" type="button" title="Detener">Detener</button>
-        <button id="player-variables" class="btn" type="button">Variables y listas</button>
-        <button id="player-clones" class="btn" type="button">Clones</button>
-        <button id="player-fullscreen" class="btn" type="button">Pantalla completa</button>
+        <button id="player-flag" class="btn" type="button" title="Iniciar" data-i18n-title="start" data-i18n="playerFlag">Bandera</button>
+        <button id="player-pause" class="btn" type="button" title="Pausar" data-i18n-title="pause" data-i18n="pause">Pausar</button>
+        <button id="player-stop" class="btn" type="button" title="Detener" data-i18n-title="stop" data-i18n="stop">Detener</button>
+        <button id="player-variables" class="btn" type="button" data-i18n="variablesTitle">Variables y listas</button>
+        <button id="player-clones" class="btn" type="button" data-i18n="clones">Clones</button>
+        <button id="player-fullscreen" class="btn" type="button" data-i18n="fullscreen">Pantalla completa</button>
       </div>
     </div>
     <div id="player-loading" class="player-loading" hidden>
       <span class="spinner" aria-hidden="true"></span>
-      <span>Cargando proyecto…</span>
+      <span data-i18n="playerLoading">Cargando proyecto…</span>
     </div>
-        <iframe id="player" title="Reproductor del proyecto"
-              allow="autoplay; fullscreen" allowfullscreen></iframe>
+    <iframe id="player" title="Reproductor del proyecto" data-i18n-title="playerFrameTitle"
+            allow="autoplay; fullscreen" allowfullscreen
+            allowtransparency="true" style="color-scheme: auto"></iframe>
   </div>
 
   <dialog id="variables-dialog" class="variables-dialog" aria-labelledby="variables-title">
     <div class="dialog-top">
-      <h2 id="variables-title">Variables y listas</h2>
-      <button id="variables-close" class="btn" type="button">Cerrar</button>
+      <h2 id="variables-title" data-i18n="variablesTitle">Variables y listas</h2>
+      <button id="variables-close" class="btn" type="button" data-i18n="detailClose">Cerrar</button>
     </div>
     <div class="table-wrap">
       <table class="variables-table">
-        <thead><tr><th>Guardar</th><th>Tipo</th><th>Variable</th><th>Objetivo</th><th>Valor</th><th></th></tr></thead>
+        <thead><tr><th data-i18n="thSave">Guardar</th><th data-i18n="thKind">Tipo</th><th data-i18n="thVariable">Variable</th><th data-i18n="thTarget">Objetivo</th><th data-i18n="thValue">Valor</th><th></th></tr></thead>
         <tbody id="variables-rows"></tbody>
       </table>
     </div>
-    <p id="variables-empty" class="detail-muted" hidden>No hay variables en este proyecto.</p>
+    <p id="variables-empty" class="detail-muted" hidden data-i18n="variablesEmpty">No hay variables en este proyecto.</p>
   </dialog>
   <dialog id="edit-variable-dialog" class="variables-dialog" aria-labelledby="edit-variable-title">
-    <h2 id="edit-variable-title">Editar valor</h2>
+    <h2 id="edit-variable-title" data-i18n="editValueTitle">Editar valor</h2>
     <label id="edit-variable-label" for="edit-variable-input"></label>
     <textarea id="edit-variable-input" rows="5" spellcheck="false"></textarea>
     <div class="detail-actions">
-      <button id="edit-variable-cancel" class="btn" type="button">Cancelar</button>
-      <button id="edit-variable-save" class="btn btn-primary" type="button">Guardar</button>
+      <button id="edit-variable-cancel" class="btn" type="button" data-i18n="cancel">Cancelar</button>
+      <button id="edit-variable-save" class="btn btn-primary" type="button" data-i18n="save">Guardar</button>
     </div>
   </dialog>
 
   <dialog id="auth-dialog" class="auth-dialog" aria-labelledby="auth-title">
     <div class="dialog-top">
-      <h2 id="auth-title">Iniciar sesión con Scratch</h2>
-      <button id="auth-close" class="btn" type="button">Cancelar</button>
+      <h2 id="auth-title" data-i18n="authTitle">Iniciar sesión con Scratch</h2>
+      <button id="auth-close" class="btn" type="button" data-i18n="cancel">Cancelar</button>
     </div>
-    <p class="auth-intro">
+    <p class="auth-intro" data-i18n="authIntro">
       Vas a recibir un código. Escribilo en el proyecto de autenticación de Scratch (o dejalo en un
       comentario) y volvé a esta pestaña: la sesión se confirma sola.
     </p>
     <label class="auth-field" for="auth-method">
-      <span>Método</span>
+      <span data-i18n="authMethodLabel">Método</span>
       <select id="auth-method">
-        <option value="cloud">Escribir el código en el proyecto</option>
-        <option value="comment">Comentar el código en el proyecto</option>
-        <option value="profile-comment">Comentar el código en tu perfil</option>
+        <option value="cloud" data-i18n="authMethodCloud">Escribir el código en el proyecto</option>
+        <option value="comment" data-i18n="authMethodComment">Comentar el código en el proyecto</option>
+        <option value="profile-comment" data-i18n="authMethodProfile">Comentar el código en tu perfil</option>
       </select>
     </label>
     <div id="auth-username-row" hidden>
       <label class="auth-field" for="auth-username">
-        <span>Tu usuario de Scratch</span>
-        <input id="auth-username" type="text" autocomplete="off" spellcheck="false" placeholder="usuario">
+        <span data-i18n="authUsernameLabel">Tu usuario de Scratch</span>
+        <input id="auth-username" type="text" autocomplete="off" spellcheck="false" placeholder="usuario" data-i18n-placeholder="authUsernamePlaceholder">
       </label>
-      <button id="auth-continue" class="btn btn-primary" type="button">Continuar</button>
+      <button id="auth-continue" class="btn btn-primary" type="button" data-i18n="authContinue">Continuar</button>
     </div>
     <div id="auth-ready" hidden>
-      <p id="auth-code" class="auth-code" aria-label="Código de acceso">—</p>
+      <p id="auth-code" class="auth-code" aria-label="Código de acceso" data-i18n-aria-label="authCodeLabel">—</p>
       <div class="detail-actions">
-        <button id="auth-copy" class="btn" type="button">Copiar código</button>
+        <button id="auth-copy" class="btn" type="button" data-i18n="authCopy">Copiar código</button>
         <a id="auth-open" class="btn btn-primary" target="_blank" rel="noopener"
-           href="https://scratch.mit.edu/projects/1391621033/">Abrir el proyecto en Scratch</a>
+           href="https://scratch.mit.edu/projects/1391621033/" data-i18n="authOpen">Abrir el proyecto en Scratch</a>
       </div>
     </div>
     <p id="auth-status" class="auth-status" role="status"></p>

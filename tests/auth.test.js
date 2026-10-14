@@ -2,7 +2,7 @@
 
 /* Tests for the Scratch sign-in core (web/auth.js).
  *
- * Run with: node --test tests/
+ * Run with: node --test
  */
 
 const test = require("node:test");

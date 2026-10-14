@@ -2,8 +2,8 @@
 
 /* Basic Engine Hub — Scratch sign-in core (Scratch Auth, custom frontend).
  *
- * Pure helpers with no DOM and no implicit globals, so `node --test tests/`
- * can exercise every rule. web/app.js owns the DOM wiring.
+ * Pure helpers with no DOM and no implicit globals, so the `node --test`
+ * suite can exercise every rule. web/app.js owns the DOM wiring.
  *
  * Flow (documented at https://auth.itinerary.eu.org/documentation/introduction,
  * real spec in Looky1173/Scratch-Auth-Client src/docs/custom-frontend.mdx):

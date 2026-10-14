@@ -12,8 +12,8 @@ from PySide6.QtCore import QRectF, QSize, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
+    QButtonGroup,
     QCheckBox,
-    QComboBox,
     QDialog,
     QFormLayout,
     QFrame,
@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -332,10 +333,6 @@ class ProjectCard(QFrame):
         self.id_label.setToolTip(meta)
         if self._featured_badge is not None:
             self._featured_badge.setText(i18n.tr("featured_badge"))
-        if self._thumb_label.pixmap() is self._placeholder_pixmap:
-            # The placeholder canvas embeds text: redraw it in the new language.
-            self._placeholder_pixmap = None
-            self._thumb_label.setPixmap(self._placeholder())
         if not self.project_title:
             title = i18n.tr("project_default_title", pid=self.pid)
             self.title_label.setText(self._elide(title))
@@ -361,24 +358,38 @@ class ProjectCard(QFrame):
         )
 
     def _placeholder(self) -> QPixmap:
+        """Card art shown while the real thumbnail is missing, loading or broken."""
         if self._placeholder_pixmap is None:
-            pixmap = QPixmap(self._THUMB_W, self._THUMB_H)
-            pixmap.fill(QColor("#3a3f46"))
-            painter = QPainter(pixmap)
-            painter.setPen(QColor("#8b939c"))
-            painter.drawText(
-                pixmap.rect(), Qt.AlignmentFlag.AlignCenter, i18n.tr("no_thumbnail")
+            self._placeholder_pixmap = self._rounded(
+                self._placeholder_source(cache.PLACEHOLDER_THUMBNAIL, self._THUMB_W, self._THUMB_H),
+                8,
             )
-            painter.end()
-            self._placeholder_pixmap = self._rounded(pixmap, 8)
         return self._placeholder_pixmap
 
     def _avatar_placeholder(self) -> QPixmap:
         if self._avatar_placeholder_pixmap is None:
-            pixmap = QPixmap(self._AVATAR_SIZE, self._AVATAR_SIZE)
-            pixmap.fill(QColor("#1f242c"))
-            self._avatar_placeholder_pixmap = self._rounded(pixmap, self._AVATAR_SIZE // 2)
+            self._avatar_placeholder_pixmap = self._rounded(
+                self._placeholder_source(
+                    cache.PLACEHOLDER_AVATAR, self._AVATAR_SIZE, self._AVATAR_SIZE
+                ),
+                self._AVATAR_SIZE // 2,
+            )
         return self._avatar_placeholder_pixmap
+
+    def _placeholder_source(self, path: Path, width: int, height: int) -> QPixmap:
+        """Scale a placeholder asset to the label, falling back to a flat panel
+        when the image is unreadable (a checkout without Assets/ still renders)."""
+        pixmap = QPixmap(str(path))
+        if pixmap.isNull():
+            pixmap = QPixmap(width, height)
+            pixmap.fill(QColor("#1f242c"))
+            return pixmap
+        return pixmap.scaled(
+            width,
+            height,
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation,
+        )
 
     def _rounded(self, pixmap: QPixmap, radius: int) -> QPixmap:
         out = QPixmap(pixmap.size())
@@ -606,13 +617,8 @@ class Hub(QWidget):
         dialog = QDialog(self)
         dialog.setWindowTitle(i18n.tr("settings_title"))
         form = QFormLayout(dialog)
-        combo = QComboBox()
-        for code, label in i18n.LANGUAGES.items():
-            combo.addItem(label, code)
-        combo.setCurrentIndex(list(i18n.LANGUAGES).index(i18n.current()))
 
-        def _on_lang(idx):
-            code = combo.itemData(idx)
+        def _on_lang(code):
             if code != i18n.current():
                 i18n.set_language(code)
                 settings.set("language", code)
@@ -620,8 +626,7 @@ class Hub(QWidget):
                 if self._stack.currentIndex() == 1:
                     self.player.set_language(code)
 
-        combo.currentIndexChanged.connect(_on_lang)
-        form.addRow(i18n.tr("settings_language"), combo)
+        form.addRow(i18n.tr("settings_language"), self._language_choices(_on_lang))
         close_btn = QPushButton(i18n.tr("close"))
         close_btn.clicked.connect(dialog.accept)
         form.addRow(close_btn)
@@ -629,6 +634,44 @@ class Hub(QWidget):
         clear_cache_btn.clicked.connect(lambda: self._confirm_clear_cache(dialog))
         form.addRow(clear_cache_btn)
         dialog.exec()
+
+    def _language_choices(self, on_choose) -> QWidget:
+        """The four languages as their own title art, one exclusive tile each.
+
+        The images carry each language's name in its own script, which a text
+        list cannot; a file that cannot be read falls back to the plain name so
+        the control keeps working on a checkout without Assets/.
+        """
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        group = QButtonGroup(row)
+        group.setExclusive(True)
+        # One shared height keeps the wordmarks aligned: the files differ in size
+        # and aspect ratio, so a shared width would distort them.
+        title_height = 22
+        for code, label in i18n.LANGUAGES.items():
+            button = QToolButton()
+            button.setObjectName("languageChoice")
+            button.setCheckable(True)
+            button.setToolTip(label)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            pixmap = QPixmap(str(cache.TITLE_DIR / i18n.TITLE_FILES[code]))
+            if pixmap.isNull():
+                button.setText(label)
+            else:
+                title = pixmap.scaledToHeight(
+                    title_height, Qt.TransformationMode.SmoothTransformation
+                )
+                button.setIcon(QIcon(title))
+                button.setIconSize(title.size())
+            button.setChecked(code == i18n.current())
+            button.clicked.connect(lambda _checked=False, value=code: on_choose(value))
+            group.addButton(button)
+            layout.addWidget(button)
+        layout.addStretch(1)
+        return row
 
     def _confirm_clear_cache(self, dialog) -> None:
         if self._downloading:

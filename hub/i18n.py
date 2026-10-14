@@ -1,12 +1,22 @@
-"""Lightweight UI translations (es/en) for the desktop shell.
+"""Lightweight UI translations (es/fr/pt/en) for the desktop shell.
 
 Keys are stable identifiers; es values MUST reproduce the current UI text
 byte-for-byte; en values are natural translations. ``tr()`` supports {arg}
 formatting via ``str.format``.
 """
 
-LANGUAGES = {"es": "Español", "en": "English"}
-DEFAULT = "es"
+LANGUAGES = {"es": "Español", "fr": "Français", "pt": "Português", "en": "English"}
+DEFAULT = "en"
+
+# Each language is offered as its own title art (Assets/Lengs/Titles), drawn in
+# that language. The filenames do not follow the codes, so the mapping lives next
+# to the list it belongs to instead of being rebuilt at every call site.
+TITLE_FILES = {
+    "es": "español.png",
+    "fr": "francais.png",
+    "pt": "portugues.png",
+    "en": "english.png",
+}
 
 STRINGS = {
     "es": {
@@ -69,7 +79,6 @@ STRINGS = {
         "featured_badge": "★ Destacado",
         "card_cached": "en caché",
         "card_missing": "no descargado",
-        "no_thumbnail": "Sin miniatura",
         "project_default_title": "Proyecto {pid}",
         # Project detail dialog
         "play": "▶ Jugar",
@@ -177,7 +186,6 @@ STRINGS = {
         "featured_badge": "★ Featured",
         "card_cached": "cached",
         "card_missing": "not downloaded",
-        "no_thumbnail": "No thumbnail",
         "project_default_title": "Project {pid}",
         # Project detail dialog
         "play": "Play",
@@ -225,6 +233,212 @@ STRINGS = {
         "scratch_avatar_save2_error": "Couldn't save the avatar for creator {creator_id}: {exc}",
         "scratch_avatar_empty": "The avatar for creator {creator_id} arrived empty.",
     },
+    "fr": {
+        # Menu page
+        "refresh": "↻ Actualiser",
+        "search_placeholder": "Rechercher des projets…",
+        "menu_settings": "Configuration",
+        # Player page
+        "back": "← Retour au menu",
+        "variables": "Variables",
+        "lists": "Listes",
+        "iniciar": "Jouer",
+        "pausar": "Pause",
+        "reanudar": "Reprendre",
+        "detener": "Arrêter",
+        "clones": "Clones",
+        "clones_active": "Clones actifs",
+        "fullscreen": "Plein écran",
+        # Status / errors
+        "status_ready": "Prêt.",
+        "status_load_error": "Impossible de charger les projets.",
+        "error_title": "Erreur",
+        "loading_projects": "Chargement des projets…",
+        "projects_found": "{total} projets trouvés.",
+        "filter_count": "{visible} sur {total} projets.",
+        "loading": "Chargement…",
+        "cached_title": "En cache : {title}",
+        "downloading_pid": "Téléchargement de {pid}…",
+        "ready_title": "Prêt : {title}",
+        "download_failed": "Impossible de télécharger le projet.",
+        "player_unavailable": "Le lecteur web n'est pas disponible.",
+        "player_load_failed": "Impossible de charger le lecteur web.",
+        "unexpected_error": "Erreur inattendue : {exc}",
+        "var_title": "Variables — {title}",
+        "list_title": "Listes — {title}",
+        "col_save": "Enregistrer",
+        "col_variable": "Variable",
+        "col_target": "Cible",
+        "col_value": "Valeur",
+        "open_project_first": "Ouvre d'abord un projet.",
+        "panel_info": "La fenêtre du jeu continue de fonctionner pendant que ce panneau est ouvert. Double-clique sur une valeur pour la modifier.",
+        "show_variables_failed": "Impossible d'afficher les variables : {exc}",
+        "edit_list_prompt": "Nouveaux éléments séparés par des virgules ou en JSON pour « {name} » :",
+        "edit_value_prompt": "Nouvelle valeur pour « {name} » :",
+        "edit_value_title": "Modifier la valeur",
+        "variable_updated": "Variable « {name} » mise à jour.",
+        "variable_update_failed": "Impossible de mettre à jour la variable : {exc}",
+        # Settings / cache
+        "settings_title": "Configuration",
+        "settings_language": "Langue",
+        "clear_cache": "Vider les projets téléchargés…",
+        "clear_cache_title": "Vider le cache des projets",
+        "clear_cache_confirm": "Les projets téléchargés seront supprimés, mais les vignettes et les favoris seront conservés. Continuer ?",
+        "cache_cleared": "Cache vidé : {count} projets.",
+        "close": "Fermer",
+        # Cards
+        "card_meta": "ID: {pid} • @{author}",
+        "no_author": "(sans auteur)",
+        "featured_badge": "★ En vedette",
+        "card_cached": "en cache",
+        "card_missing": "non téléchargé",
+        "project_default_title": "Projet {pid}",
+        "play": "Jouer",
+        "open_in_scratch": "Ouvrir dans Scratch",
+        "favorite_add": "❤ Ajouter aux favoris",
+        "favorite_remove": "❤ Retirer des favoris",
+        "stats_views": "👁 {n}",
+        "stats_loves": "❤ {n}",
+        "stats_favorites": "⭐ {n}",
+        "stats_remixes": "🔀 {n}",
+        # Detail dialog
+        "section_description": "Description",
+        "section_instructions": "Instructions",
+        "no_description": "Pas de description.",
+        "no_instructions": "Pas d'instructions.",
+        "section_comments": "Commentaires",
+        "comments_loading": "Chargement des commentaires…",
+        "no_comments": "Pas encore de commentaires.",
+        "comments_unavailable": "Impossible de charger les commentaires.",
+        "no_cover": "Sans couverture",
+        "project_detail_title": "Détails du projet",
+        # Scratch API (technical messages, shown in the status bar)
+        "scratch_http_error": "L'API de Scratch a répondu avec une erreur HTTP {code} au moment de {action}.",
+        "scratch_http_action_list": "lister les projets",
+        "scratch_http_action_user": "lister les projets de l'utilisateur",
+        "scratch_http_action_project": "récupérer le projet",
+        "scratch_project_error": "Impossible d'obtenir le projet {project_id} : {exc}",
+        "scratch_project_invalid": "Réponse invalide lors de l'obtention du projet {project_id}.",
+        "scratch_contact": "Impossible de contacter l'API de Scratch : {exc}",
+        "scratch_invalid_response": "L'API de Scratch a renvoyé une réponse invalide.",
+        "scratch_incomplete": "L'API de Scratch a renvoyé des données incomplètes.",
+        "scratch_token_error": "Impossible d'obtenir le jeton du projet {project_id} : {exc}",
+        "scratch_token_invalid": "Réponse invalide lors de l'obtention du jeton du projet {project_id}.",
+        "scratch_no_token": "Le projet {project_id} n'a pas de jeton de téléchargement.",
+        "scratch_download_error": "Impossible de télécharger le projet {project_id} : {exc}",
+        "scratch_downloaded_empty": "Le projet {project_id} a été téléchargé vide.",
+        "scratch_thumb_error": "Impossible de télécharger la vignette du projet {project_id} : {exc}",
+        "scratch_thumb_save_error": "Impossible d'enregistrer la vignette du projet {project_id} : {exc}",
+        "scratch_thumb_save2_error": "Impossible d'enregistrer la vignette du projet {project_id} : {exc}",
+        "scratch_thumb_empty": "La vignette du projet {project_id} est arrivée vide.",
+        "scratch_avatar_error": "Impossible de télécharger l'avatar du créateur {creator_id} : {exc}",
+        "scratch_avatar_save_error": "Impossible d'enregistrer l'avatar du créateur {creator_id} : {exc}",
+        "scratch_avatar_save2_error": "Impossible d'enregistrer l'avatar du créateur {creator_id} : {exc}",
+        "scratch_avatar_empty": "L'avatar du créateur {creator_id} est arrivé vide.",
+    },
+    "pt": {
+        # Menu page
+        "refresh": "↻ Atualizar",
+        "search_placeholder": "Pesquisar projetos…",
+        "menu_settings": "Configurações",
+        # Player page
+        "back": "← Voltar ao menu",
+        "variables": "Variáveis",
+        "lists": "Listas",
+        "iniciar": "Jogar",
+        "pausar": "Pausar",
+        "reanudar": "Retomar",
+        "detener": "Parar",
+        "clones": "Clones",
+        "clones_active": "Clones ativos",
+        "fullscreen": "Tela cheia",
+        # Status / errors
+        "status_ready": "Pronto.",
+        "status_load_error": "Não foi possível carregar os projetos.",
+        "error_title": "Erro",
+        "loading_projects": "Carregando projetos…",
+        "projects_found": "{total} projetos encontrados.",
+        "filter_count": "{visible} de {total} projetos.",
+        "loading": "Carregando…",
+        "cached_title": "Em cache: {title}",
+        "downloading_pid": "Baixando {pid}…",
+        "ready_title": "Pronto: {title}",
+        "download_failed": "Não foi possível baixar o projeto.",
+        "player_unavailable": "O reprodutor web não está disponível.",
+        "player_load_failed": "Não foi possível carregar o reprodutor web.",
+        "unexpected_error": "Erro inesperado: {exc}",
+        "var_title": "Variáveis — {title}",
+        "list_title": "Listas — {title}",
+        "col_save": "Salvar",
+        "col_variable": "Variável",
+        "col_target": "Alvo",
+        "col_value": "Valor",
+        "open_project_first": "Abra um projeto primeiro.",
+        "panel_info": "A janela do jogo continua funcionando enquanto este painel está aberto. Dê um duplo clique em um valor para editá-lo.",
+        "show_variables_failed": "Não foi possível mostrar as variáveis: {exc}",
+        "edit_list_prompt": 'Novos itens separados por vírgula ou JSON para "{name}":',
+        "edit_value_prompt": 'Novo valor para "{name}":',
+        "edit_value_title": "Editar valor",
+        "variable_updated": 'Variável "{name}" atualizada.',
+        "variable_update_failed": "Não foi possível atualizar a variável: {exc}",
+        # Settings / cache
+        "settings_title": "Configuração",
+        "settings_language": "Idioma",
+        "clear_cache": "Apagar projetos baixados…",
+        "clear_cache_title": "Apagar cache de projetos",
+        "clear_cache_confirm": "Os projetos baixados serão removidos, mas as miniaturas e os favoritos serão mantidos. Continuar?",
+        "cache_cleared": "Cache apagado: {count} projetos.",
+        "close": "Fechar",
+        # Cards
+        "card_meta": "ID: {pid} • @{author}",
+        "no_author": "(sem autor)",
+        "featured_badge": "★ Destaque",
+        "card_cached": "em cache",
+        "card_missing": "não baixado",
+        "project_default_title": "Projeto {pid}",
+        "play": "Jogar",
+        "open_in_scratch": "Abrir no Scratch",
+        "favorite_add": "❤ Adicionar aos favoritos",
+        "favorite_remove": "❤ Remover dos favoritos",
+        "stats_views": "👁 {n}",
+        "stats_loves": "❤ {n}",
+        "stats_favorites": "⭐ {n}",
+        "stats_remixes": "🔀 {n}",
+        # Detail dialog
+        "section_description": "Descrição",
+        "section_instructions": "Instruções",
+        "no_description": "Sem descrição.",
+        "no_instructions": "Sem instruções.",
+        "section_comments": "Comentários",
+        "comments_loading": "Carregando comentários…",
+        "no_comments": "Sem comentários por enquanto.",
+        "comments_unavailable": "Não foi possível carregar os comentários.",
+        "no_cover": "Sem capa",
+        "project_detail_title": "Detalhes do projeto",
+        # Scratch API (technical messages, shown in the status bar)
+        "scratch_http_error": "A API do Scratch respondeu com erro HTTP {code} durante {action}.",
+        "scratch_http_action_list": "listar os projetos",
+        "scratch_http_action_user": "listar os projetos do usuário",
+        "scratch_http_action_project": "obter o projeto",
+        "scratch_project_error": "Não foi possível obter o projeto {project_id}: {exc}",
+        "scratch_project_invalid": "Resposta inválida ao obter o projeto {project_id}.",
+        "scratch_contact": "Não foi possível contatar a API do Scratch: {exc}",
+        "scratch_invalid_response": "A API do Scratch retornou uma resposta inválida.",
+        "scratch_incomplete": "A API do Scratch retornou dados incompletos.",
+        "scratch_token_error": "Não foi possível obter o token do projeto {project_id}: {exc}",
+        "scratch_token_invalid": "Resposta inválida ao obter o token do projeto {project_id}.",
+        "scratch_no_token": "O projeto {project_id} não tem token de download.",
+        "scratch_download_error": "Não foi possível baixar o projeto {project_id}: {exc}",
+        "scratch_downloaded_empty": "O projeto {project_id} foi baixado vazio.",
+        "scratch_thumb_error": "Não foi possível baixar a miniatura do projeto {project_id}: {exc}",
+        "scratch_thumb_save_error": "Não foi possível salvar a miniatura do projeto {project_id}: {exc}",
+        "scratch_thumb_save2_error": "Não foi possível salvar a miniatura do projeto {project_id}: {exc}",
+        "scratch_thumb_empty": "A miniatura do projeto {project_id} chegou vazia.",
+        "scratch_avatar_error": "Não foi possível baixar o avatar do criador {creator_id}: {exc}",
+        "scratch_avatar_save_error": "Não foi possível salvar o avatar do criador {creator_id}: {exc}",
+        "scratch_avatar_save2_error": "Não foi possível salvar o avatar do criador {creator_id}: {exc}",
+        "scratch_avatar_empty": "O avatar do criador {creator_id} chegou vazio.",
+    },
 }
 
 _current = DEFAULT
@@ -237,7 +451,7 @@ def set_language(lang) -> None:
 
 
 def current() -> str:
-    """Return the active language code (default: "es")."""
+    """Return the active language code (default: "en")."""
     return _current
 
 

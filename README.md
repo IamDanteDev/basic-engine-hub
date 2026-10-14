@@ -106,7 +106,7 @@ and a confirmation that points at another site is rejected.
 The session is identity only: the header shows who is signed in, and the author
 name of your own projects gets `(You)`. The auth project id and the supported
 methods (`cloud`, `comment`, `profile-comment`) live in `web/auth.js`.
-`tests/auth.test.js` covers the rules with `node --test tests/`.
+`tests/auth.test.js` covers the rules with `node --test`.
 
 ## Fedora / headless notes
 

@@ -11,35 +11,42 @@
 
 /* Browser frontend. Durable user state is stored in localStorage/IndexedDB;
  * web/serve.py only streams Scratch data and never writes project files. */
+/* The menu's copy. web/i18n.js owns the table and the choice; every value here
+ * is resolved on read, so switching the language re-renders without a reload.
+ * The core is a classic-script global (same shape as AuthCore below); if it ever
+ * fails to load, tr() degrades to showing the key instead of throwing. */
+const i18n = typeof I18n !== "undefined" ? I18n : null;
+const tr = (key, params) => (i18n ? i18n.tr(key, params) : key);
+
 const UI = {
-  loading: "Cargando proyectos…",
-  found: (n) => `${n} proyectos encontrados.`,
-  filter: (visible, total) => `${visible} de ${total} proyectos encontrados.`,
-  offline: "Mostrando el último listado guardado sin conexión.",
-  loadError: "No se pudo cargar la lista de proyectos. Revisa tu conexión e inténtalo de nuevo.",
-  playerLoading: "Cargando proyecto…",
-  detailsUnavailable: "Los detalles ampliados necesitan conexión o el servidor web local.",
-  commentsUnavailable: "Los comentarios no están disponibles ahora.",
-  noComments: "Sin comentarios todavía.",
-  favoriteAdd: "Añadir a favoritos",
-  favoriteRemove: "Quitar de favoritos",
-  defaultTitle: (id) => `Proyecto ${id}`,
-  featuredBadge: "★ Destacado",
-  signIn: "Iniciar sesión",
-  signOut: "Salir",
-  sessionUser: (name) => `Sesión de @${name} en este navegador`,
-  authChecking: "Comprobando la sesión…",
-  authRequesting: "Generando tu código…",
-  authWaitingProject: "Escribí el código en el proyecto y volvé a esta pestaña. Esperando la confirmación…",
-  authWaitingComment: "Dejá el código en un comentario del proyecto y volvé a esta pestaña. Esperando la confirmación…",
-  authWaitingProfile: "Dejá el código en un comentario de tu propio perfil y volvé a esta pestaña. Esperando la confirmación…",
-  authUsernameRequired: "Escribí tu usuario de Scratch y tocá Continuar.",
-  authCopied: "Código copiado.",
-  authCopyError: "No se pudo copiar; seleccioná el código a mano.",
-  authRequestFailed: "No se pudo generar el código. Revisá tu conexión e intentá de nuevo.",
-  authRejected: "La confirmación no corresponde a este sitio. Se canceló el inicio de sesión.",
-  authExpired: "El código venció. Cancelá y volvé a intentar.",
-  authCallbackFailed: "No se pudo confirmar la sesión. Iniciá sesión de nuevo.",
+  get loading() { return tr("loading"); },
+  get offline() { return tr("offline"); },
+  get loadError() { return tr("loadError"); },
+  get playerLoading() { return tr("playerLoading"); },
+  get detailsUnavailable() { return tr("detailsUnavailable"); },
+  get commentsUnavailable() { return tr("commentsUnavailable"); },
+  get noComments() { return tr("noComments"); },
+  get favoriteAdd() { return tr("favoriteAdd"); },
+  get favoriteRemove() { return tr("favoriteRemove"); },
+  get featuredBadge() { return tr("featuredBadge"); },
+  get signIn() { return tr("signIn"); },
+  get signOut() { return tr("signOut"); },
+  get authChecking() { return tr("authChecking"); },
+  get authRequesting() { return tr("authRequesting"); },
+  get authWaitingProject() { return tr("authWaitingProject"); },
+  get authWaitingComment() { return tr("authWaitingComment"); },
+  get authWaitingProfile() { return tr("authWaitingProfile"); },
+  get authUsernameRequired() { return tr("authUsernameRequired"); },
+  get authCopied() { return tr("authCopied"); },
+  get authCopyError() { return tr("authCopyError"); },
+  get authRequestFailed() { return tr("authRequestFailed"); },
+  get authRejected() { return tr("authRejected"); },
+  get authExpired() { return tr("authExpired"); },
+  get authCallbackFailed() { return tr("authCallbackFailed"); },
+  found: (n) => tr("found", { n }),
+  filter: (visible, total) => tr("filter", { visible, total }),
+  defaultTitle: (id) => tr("defaultTitle", { id }),
+  sessionUser: (name) => tr("sessionUser", { name }),
 };
 
 const KEYS = {
@@ -54,6 +61,10 @@ const DB_VERSION = 1;
 const scriptElement = [...document.scripts].find((script) => /\/app\.js(?:\?|$)/.test(script.src));
 const ASSET_BASE = new URL(".", scriptElement ? scriptElement.src : location.href);
 const apiUrl = (route) => new URL(`../api/${route}`, ASSET_BASE).href;
+/* Shared art (placeholder images, language titles) lives in the repository's
+ * Assets/ next to web/, so it is one level above this script under both hosting
+ * layouts: /web/app.js -> /Assets/... and /app.js -> /Assets/.... */
+const assetUrl = (path) => new URL(`../Assets/${path}`, ASSET_BASE).href;
 const playerUrl = () => new URL(`player.html?session=${Date.now()}`, ASSET_BASE).href;
 
 const grid = document.getElementById("grid");
@@ -89,6 +100,8 @@ let loaded = projects.length > 0;
 let favoritesOnly = false;
 let activeProject = null;
 let activeDetail = null;
+let detailLoaded = false;
+let lastComments = null;
 let currentPlayerId = null;
 let localPlayer = false;
 let isPaused = false;
@@ -107,7 +120,7 @@ function writeJSON(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
-    statusEl.textContent = "No se pudo guardar este cambio en el navegador.";
+    statusEl.textContent = tr("storageFailed");
   }
 }
 
@@ -196,7 +209,7 @@ function render() {
     .sort(byNewestFirst);
   for (const project of visibleProjects) grid.appendChild(cardFor(project));
   favoritesFilter.setAttribute("aria-pressed", String(favoritesOnly));
-  favoritesFilter.textContent = `Favoritos (${favorites.size})`;
+  favoritesFilter.textContent = tr("favoritesCount", { n: favorites.size });
   statusEl.textContent = needle || favoritesOnly
     ? UI.filter(visibleProjects.length, projects.length)
     : UI.found(projects.length);
@@ -211,19 +224,17 @@ function cardFor(project) {
 
   const hero = document.createElement("span");
   hero.className = "hero";
+  /* Both images sit on the placeholder art declared by .hero / .avatar in
+   * style.css: a slow request shows the placeholder and a failed one keeps it,
+   * so dropping the `src` reveals the background instead of a broken icon. */
   if (project.image) {
     const image = document.createElement("img");
     image.className = "hero-img";
     image.alt = "";
     image.loading = "lazy";
     image.src = project.image;
-    image.addEventListener("error", () => {
-      image.remove();
-      hero.classList.add("hero-empty");
-    });
+    image.addEventListener("error", () => image.removeAttribute("src"));
     hero.appendChild(image);
-  } else {
-    hero.classList.add("hero-empty");
   }
   if (project.avatar) {
     const avatar = document.createElement("img");
@@ -231,7 +242,7 @@ function cardFor(project) {
     avatar.alt = "";
     avatar.loading = "lazy";
     avatar.src = project.avatar;
-    avatar.addEventListener("error", () => avatar.remove());
+    avatar.addEventListener("error", () => avatar.removeAttribute("src"));
     hero.appendChild(avatar);
   }
   if (favorites.has(String(project.id))) {
@@ -278,6 +289,8 @@ function setFavoriteButton() {
 async function openDetails(project) {
   activeProject = project;
   activeDetail = project;
+  detailLoaded = false;
+  lastComments = null;
   const id = String(project.id);
   document.getElementById("detail-title").textContent = project.title || UI.defaultTitle(id);
   const author = document.getElementById("detail-author");
@@ -286,8 +299,15 @@ async function openDetails(project) {
     ? `https://scratch.mit.edu/users/${encodeURIComponent(project.username)}/`
     : `https://scratch.mit.edu/projects/${encodeURIComponent(id)}/`;
   const cover = document.getElementById("detail-cover");
-  cover.hidden = !project.image;
-  cover.src = project.image || "";
+  /* The cover keeps .detail-cover's placeholder art while loading and when the
+   * request fails, so it is never hidden and never shows a broken icon. */
+  cover.hidden = false;
+  if (project.image) {
+    cover.src = project.image;
+  } else {
+    cover.removeAttribute("src");
+  }
+  cover.onerror = () => cover.removeAttribute("src");
   document.getElementById("detail-open-scratch").href = `https://scratch.mit.edu/projects/${encodeURIComponent(id)}/`;
   const initialStats = project.stats || {};
   document.getElementById("detail-stats").textContent = Object.keys(initialStats).length
@@ -311,9 +331,10 @@ async function openDetails(project) {
     if (index >= 0) projects[index] = project;
     writeJSON(KEYS.listing, projects);
     document.getElementById("detail-stats").textContent = formatStats(detail.stats || {});
-    showDetailText("detail-description", detail.description, "Sin descripción.");
-    showDetailText("detail-instructions", detail.instructions, "Sin instrucciones.");
+    showDetailText("detail-description", detail.description, tr("noDescription"));
+    showDetailText("detail-instructions", detail.instructions, tr("noInstructions"));
   }
+  detailLoaded = true;
   renderComments(comments);
 }
 
@@ -340,6 +361,7 @@ async function fetchApiJSON(url) {
 }
 
 function renderComments(comments) {
+  lastComments = comments;
   const container = document.getElementById("detail-comments");
   container.textContent = "";
   if (!Array.isArray(comments)) {
@@ -441,7 +463,7 @@ async function getProjectBytes(id) {
       await saveProject(id, bytes, activeProject);
     } catch (error) {
       report("warn", "No se pudo guardar el proyecto en la caché.", { id, error });
-      statusEl.textContent = "Proyecto cargado; el navegador no pudo guardarlo en IndexedDB.";
+      statusEl.textContent = tr("cacheSaveFailed");
     }
     return bytes;
   } catch (error) {
@@ -482,7 +504,7 @@ function playLocalProject(project, bytes) {
   playerFrame.onload = async () => {
     try {
       const load = playerFrame.contentWindow.loadScratchProjectBytes;
-      if (typeof load !== "function") throw new Error("No se pudo iniciar el reproductor local.");
+      if (typeof load !== "function") throw new Error(tr("playerStartFailed"));
       const result = await load(bytes);
       if (typeof result === "string" && result.startsWith("error:")) throw new Error(result.slice(6));
       playerLoading.hidden = true;
@@ -556,7 +578,8 @@ function restoreCheckedVariables(projectId) {
   for (const [id, value] of Object.entries(values)) callLocalPlayer("setVariableValue", id, value);
 }
 
-function openVariables() {
+/* Filled from the running player; re-run on a language switch. */
+function fillVariablesTable() {
   const rows = callLocalPlayer("listVariables") || [];
   const body = document.getElementById("variables-rows");
   body.textContent = "";
@@ -568,7 +591,7 @@ function openVariables() {
     const keep = document.createElement("input");
     keep.type = "checkbox";
     keep.checked = saved.has(String(variable.id));
-    keep.setAttribute("aria-label", `Guardar ${variable.name}`);
+    keep.setAttribute("aria-label", tr("saveVariableLabel", { name: variable.name }));
     keep.addEventListener("change", () => {
       if (keep.checked) saved.add(String(variable.id));
       else saved.delete(String(variable.id));
@@ -576,7 +599,7 @@ function openVariables() {
     });
     keepCell.appendChild(keep);
     const kindCell = document.createElement("td");
-    kindCell.textContent = variable.kind === "list" ? "Lista" : "Variable";
+    kindCell.textContent = variable.kind === "list" ? tr("kindList") : tr("kindVariable");
     const nameCell = document.createElement("td");
     nameCell.textContent = `${variable.name || ""}${variable.isCloud ? " ☁" : ""}`;
     const targetCell = document.createElement("td");
@@ -588,24 +611,37 @@ function openVariables() {
     const edit = document.createElement("button");
     edit.type = "button";
     edit.className = "btn";
-    edit.textContent = "Editar";
+    edit.textContent = tr("edit");
     edit.addEventListener("click", () => editVariable(variable, valueCell));
     editCell.appendChild(edit);
     row.append(keepCell, kindCell, nameCell, targetCell, valueCell, editCell);
     body.appendChild(row);
   }
+  return rows;
+}
+
+function openVariables() {
+  fillVariablesTable();
   variablesDialog.showModal();
 }
 
 function editVariable(variable, valueCell) {
   const current = variable.kind === "list" ? JSON.stringify(variable.value) : String(variable.value);
   editingVariable = { variable, valueCell };
-  document.getElementById("edit-variable-title").textContent = `Editar ${variable.kind === "list" ? "lista" : "variable"}`;
-  document.getElementById("edit-variable-label").textContent = variable.name || "Valor";
+  refreshEditVariableCopy();
   const input = document.getElementById("edit-variable-input");
   input.value = current;
   editVariableDialog.showModal();
   input.focus();
+}
+
+/* Re-applied when the language changes while the dialog is open. */
+function refreshEditVariableCopy() {
+  if (!editingVariable) return;
+  const { variable } = editingVariable;
+  document.getElementById("edit-variable-title").textContent =
+    variable.kind === "list" ? tr("editListTitle") : tr("editVariableTitle");
+  document.getElementById("edit-variable-label").textContent = variable.name || tr("valueLabel");
 }
 
 function parseVariableValue(variable, text) {
@@ -666,7 +702,7 @@ const authStorage = (() => {
     return null; /* storage can be blocked; the app then runs signed out */
   }
 })();
-const authState = { tokens: null, poll: null, refresh: null, deadline: 0 };
+const authState = { tokens: null, poll: null, refresh: null, deadline: 0, statusKey: "" };
 let session = Auth && authStorage ? Auth.readSession(authStorage) : null;
 
 /* Username shown on a card or in the detail dialog, plus the literal "(You)"
@@ -676,8 +712,11 @@ function authorLabel(username) {
   return Auth ? Auth.authorLabel(username, session ? session.username : "") : `@${username}`;
 }
 
-function setAuthStatus(text) {
-  if (authStatusEl) authStatusEl.textContent = text || "";
+/* The status line is kept as a translation key, not as text, so a language
+ * switch can re-render the message that is currently on screen. */
+function setAuthStatus(key) {
+  authState.statusKey = key || "";
+  if (authStatusEl) authStatusEl.textContent = key ? tr(key) : "";
 }
 
 function fetchImpl(url) {
@@ -744,10 +783,10 @@ function updateAuthDialog() {
   if (ready) authCodeEl.textContent = authState.tokens.publicCode || "—";
 }
 
-function authWaitingMessage(method) {
-  if (method === "profile-comment") return UI.authWaitingProfile;
-  if (method === "comment") return UI.authWaitingComment;
-  return UI.authWaitingProject;
+function authWaitingKey(method) {
+  if (method === "profile-comment") return "authWaitingProfile";
+  if (method === "comment") return "authWaitingComment";
+  return "authWaitingProject";
 }
 
 function stopPolling() {
@@ -767,13 +806,13 @@ async function startSignIn() {
   const method = authMethodEl.value;
   const username = authUsernameEl.value.trim();
   if (method === "profile-comment" && !username) {
-    setAuthStatus(UI.authUsernameRequired);
+    setAuthStatus("authUsernameRequired");
     return;
   }
   stopAuthTimers();
   authState.tokens = null;
   updateAuthDialog();
-  setAuthStatus(UI.authRequesting);
+  setAuthStatus("authRequesting");
   try {
     const tokens = await Auth.requestTokens(fetchImpl, {
       redirect: Auth.buildCallbackUrl(location),
@@ -784,7 +823,7 @@ async function startSignIn() {
     authState.tokens = tokens;
     authState.deadline = Date.now() + AUTH_WINDOW_MS;
     updateAuthDialog();
-    setAuthStatus(authWaitingMessage(method));
+    setAuthStatus(authWaitingKey(method));
     authState.poll = setInterval(pollSignIn, AUTH_POLL_MS);
     /* The service expires a token pair after 5 minutes; refresh before that. */
     authState.refresh = setTimeout(() => {
@@ -792,7 +831,7 @@ async function startSignIn() {
     }, Auth.AUTH_CODE_TTL_MS);
   } catch (error) {
     report("error", "No se pudo generar el código de acceso.", error);
-    setAuthStatus(UI.authRequestFailed);
+    setAuthStatus("authRequestFailed");
   }
 }
 
@@ -800,7 +839,7 @@ async function pollSignIn() {
   if (!authState.tokens || !authState.tokens.privateCode) return;
   if (Date.now() > authState.deadline) {
     stopAuthTimers();
-    setAuthStatus(UI.authExpired);
+    setAuthStatus("authExpired");
     return;
   }
   let result;
@@ -815,7 +854,7 @@ async function pollSignIn() {
     stopAuthTimers();
     authState.tokens = null;
     report("warn", "La confirmación apunta a otro sitio; se descarta.", { redirect: result.redirect });
-    setAuthStatus(UI.authRejected);
+    setAuthStatus("authRejected");
     return;
   }
   completeSignIn(result.username, authMethodEl.value);
@@ -824,7 +863,7 @@ async function pollSignIn() {
 function completeSignIn(username, method) {
   stopAuthTimers();
   if (!Auth || !authStorage || !username) {
-    setAuthStatus(UI.authCallbackFailed);
+    setAuthStatus("authCallbackFailed");
     return;
   }
   session = Auth.writeSession(authStorage, { username, method: method || "cloud", at: Date.now() });
@@ -841,7 +880,7 @@ async function handleAuthCallback() {
   const privateCode = Auth.extractPrivateCode(location.search);
   if (!privateCode) return;
   stripAuthQuery(); /* never leave the code in the address bar */
-  setAuthStatus(UI.authChecking);
+  setAuthStatus("authChecking");
   let result = null;
   try {
     result = await Auth.verifyCode(fetchImpl, { privateCode });
@@ -853,7 +892,7 @@ async function handleAuthCallback() {
     return;
   }
   report("warn", "El código de la URL no produjo una sesión válida.");
-  setAuthStatus(UI.authCallbackFailed);
+  setAuthStatus("authCallbackFailed");
 }
 
 function stripAuthQuery() {
@@ -875,7 +914,7 @@ function initAuth() {
     stopAuthTimers();
     authState.tokens = null;
     updateAuthDialog();
-    if (authMethodEl.value === "profile-comment") setAuthStatus(UI.authUsernameRequired);
+    if (authMethodEl.value === "profile-comment") setAuthStatus("authUsernameRequired");
     else startSignIn();
   });
   authUsernameEl.addEventListener("keydown", (event) => {
@@ -885,9 +924,9 @@ function initAuth() {
   document.getElementById("auth-copy").addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(authCodeEl.textContent);
-      setAuthStatus(UI.authCopied);
+      setAuthStatus("authCopied");
     } catch {
-      setAuthStatus(UI.authCopyError);
+      setAuthStatus("authCopyError");
     }
   });
   document.getElementById("auth-close").addEventListener("click", () => authDialog.close());
@@ -897,6 +936,93 @@ function initAuth() {
   });
   handleAuthCallback();
 }
+
+/* ---- Language ------------------------------------------------------------- */
+
+/* The header selector and the first-visit chooser are both built from the core's
+ * own list, so the four languages, their order and their flags have a single
+ * source and cannot drift from the table. A language always shows its own name. */
+function fillLanguageOptions() {
+  if (!i18n) return;
+  const select = document.getElementById("language");
+  const options = document.getElementById("language-chooser-options");
+  select.textContent = "";
+  options.textContent = "";
+  for (const language of i18n.LANGUAGES) {
+    const option = document.createElement("option");
+    option.value = language.code;
+    option.textContent = language.name;
+    select.appendChild(option);
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "language-option";
+    const flag = document.createElement("span");
+    flag.className = "language-option-flag";
+    flag.innerHTML = language.flag;
+    /* The visible name is the language's own title art, so the option reads in
+     * the language it offers; `alt` keeps that name available to screen readers
+     * and to browsers that never get the image. */
+    const title = document.createElement("img");
+    title.className = "language-option-title";
+    title.src = assetUrl(`Lengs/Titles/${language.title}`);
+    title.alt = language.name;
+    button.append(flag, title);
+    button.addEventListener("click", () => chooseLanguage(language.code));
+    options.appendChild(button);
+  }
+  select.value = i18n.current();
+}
+
+function chooseLanguage(code) {
+  if (!i18n || !i18n.isKnownCode(code)) return;
+  i18n.setLanguage(code);
+  const chooser = document.getElementById("language-chooser");
+  if (chooser.open) chooser.close();
+}
+
+/* Re-apply every translated surface in place: the static hooks, the grid, the
+ * session chip, and whichever dialog happens to be open. */
+function applyLanguage() {
+  if (i18n) i18n.apply(document);
+  const select = document.getElementById("language");
+  if (select && i18n) select.value = i18n.current();
+  document.getElementById("player-pause").textContent = tr(isPaused ? "resume" : "pause");
+  if (loaded) render();
+  renderSession();
+  if (detailDialog.open && detailLoaded) refreshDetailCopy();
+  if (variablesDialog.open) fillVariablesTable();
+  if (editVariableDialog.open && editingVariable) refreshEditVariableCopy();
+  if (authDialog.open) {
+    updateAuthDialog();
+    if (authState.statusKey) setAuthStatus(authState.statusKey);
+  }
+}
+
+/* Re-run the detail dialog's copy for the currently open project; the values
+ * that came from the API (stats, comments) are formatted again as well. */
+function refreshDetailCopy() {
+  if (!activeDetail) return;
+  const stats = activeDetail.stats || {};
+  document.getElementById("detail-stats").textContent = Object.keys(stats).length
+    ? formatStats(stats)
+    : tr("detailsUnavailable");
+  showDetailText("detail-description", activeDetail.description, tr("noDescription"));
+  showDetailText("detail-instructions", activeDetail.instructions, tr("noInstructions"));
+  renderComments(lastComments);
+  setFavoriteButton();
+}
+
+/* The chooser asks only while neither a stored choice nor a ?lang= exists. */
+fillLanguageOptions();
+document.getElementById("language").addEventListener("change", (event) => {
+  chooseLanguage(event.currentTarget.value);
+});
+if (i18n && i18n.needsChoice(window.location.search)) {
+  document.getElementById("language-chooser").showModal();
+}
+
+if (i18n) i18n.onChange(applyLanguage);
 
 /* ---- Events --------------------------------------------------------------- */
 searchEl.value = readJSON(KEYS.search, "");
@@ -930,7 +1056,7 @@ document.getElementById("player-flag").addEventListener("click", () => callLocal
 document.getElementById("player-pause").addEventListener("click", (event) => {
   isPaused = !isPaused;
   callLocalPlayer(isPaused ? "pausePlayer" : "resumePlayer");
-  event.currentTarget.textContent = isPaused ? "Reanudar" : "Pausar";
+  event.currentTarget.textContent = tr(isPaused ? "resume" : "pause");
 });
 document.getElementById("player-stop").addEventListener("click", () => callLocalPlayer("stopAll"));
 document.getElementById("player-variables").addEventListener("click", openVariables);
