@@ -72,6 +72,34 @@ python -m unittest discover -s tests -v
 node --test
 ```
 
+## Scratch sign-in
+
+The app signs in with the same Scratch Auth service and the same auth project
+as the web version (https://scratch.mit.edu/projects/1391621033/), with the
+same three methods (`cloud`, `comment`, `profile-comment`). The flow runs in
+your own browser: the app asks the service for a code pair, shows the public
+code, opens the auth project with your default browser and polls
+`/auth/verifyToken/<privateCode>` until the service confirms the username. There
+is no embedded browser and no local callback server, so no port is opened and no
+Scratch password ever reaches the app.
+
+Only the username is kept, in `settings.json` under the `scratch_user` key; the
+private code is never persisted. The session is identity only: it carries no
+Scratch session, so it cannot comment, favourite or upload anything.
+
+Signed in, the header shows your avatar and `@username` as a profile control,
+which opens your own Scratch profile inside the app (avatar, description,
+status, joined date, country, and a button to open the real profile on
+scratch.mit.edu). Your own projects get the literal `(You)` after the author
+name, on the cards and in the detail dialog, in all four languages. The profile
+view is the one thing the desktop app has that the web cannot do: the browser
+cannot call `api.scratch.mit.edu/users/<name>` (no CORS headers), while the app
+talks to that API from Python.
+
+`hub/auth.py` holds the flow (same rules as `web/auth.js`) and
+`tests/test_auth.py` covers them; `tests/test_user_profile.py` covers the
+profile fetch.
+
 ## Web version
 
 GitHub Pages serves the root `index.html`; the Actions workflow builds

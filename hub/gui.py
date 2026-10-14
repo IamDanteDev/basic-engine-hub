@@ -35,7 +35,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from hub import cache, i18n, scratch_api, settings
+from hub import auth, cache, i18n, scratch_api, settings
+from hub.auth_dialogs import CHIP_AVATAR, ProfileDialog, ProfileWorker, SignInDialog, avatar_pixmap
 from hub.catalog import (
     BLOCKED_PROJECT_IDS,
     FEATURED_PROJECT_ID as CATALOG_FEATURED_PROJECT_ID,
@@ -339,8 +340,11 @@ class ProjectCard(QFrame):
             self.title_label.setToolTip(title)
 
     def _meta_text(self) -> str:
+        # `(You)` when the card is yours; the marker lives in hub/auth.py so the
+        # card and the detail dialog can never disagree about it.
+        author = auth.author_name(self.author, auth.current_username())
         return i18n.tr(
-            "card_meta", pid=self.pid, author=self.author or i18n.tr("no_author")
+            "card_meta", pid=self.pid, author=author or i18n.tr("no_author")
         )
 
     # Events --------------------------------------------------------------
@@ -437,12 +441,15 @@ class Hub(QWidget):
         self._listing: ListingWorker | None = None
         self._download: DownloadWorker | None = None
         self._thumbnails: ThumbnailWorker | None = None
+        self._session: dict | None = None
+        self._profile_worker: ProfileWorker | None = None
         # Apply the persisted language before any widget reads i18n.tr().
         i18n.set_language(settings.get("language", i18n.DEFAULT))
         self._build_ui()
         app = QApplication.instance()
         if app is not None:
             app.aboutToQuit.connect(self.shutdown)
+        self._refresh_session()
         self.refresh_listing()
 
     # UI -----------------------------------------------------------------
@@ -463,6 +470,17 @@ class Hub(QWidget):
         title_group.addWidget(title)
         header.addLayout(title_group)
         header.addStretch(1)
+        # The signed-in user, as a profile control (S5): avatar + @username, or
+        # the sign-in button when nobody is signed in.
+        self.session_button = QToolButton()
+        self.session_button.setObjectName("sessionButton")
+        self.session_button.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+        )
+        self.session_button.setIconSize(QSize(CHIP_AVATAR, CHIP_AVATAR))
+        self.session_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.session_button.clicked.connect(self._open_session)
+        header.addWidget(self.session_button)
         self.refresh_button = QPushButton(i18n.tr("refresh"))
         self.refresh_button.clicked.connect(self.refresh_listing)
         header.addWidget(self.refresh_button)
@@ -611,6 +629,81 @@ class Hub(QWidget):
         else:
             self.progress.hide()
 
+    # Session (Scratch auth) -------------------------------------------------
+
+    def _refresh_session(self) -> None:
+        """Paint the header control from the stored session and fetch its avatar.
+
+        The session itself is `hub.auth`'s (settings-backed); this only decides
+        what the header shows: `@username` with the avatar, or the sign-in button.
+        """
+        self._session = auth.read_session()
+        self._apply_session_text()
+        if self._session is None:
+            self.session_button.setIcon(QIcon())
+            return
+        if self._profile_worker is not None and self._profile_worker.isRunning():
+            return
+        worker = ProfileWorker(self._session["username"], self)
+        worker.finished_ok.connect(self._on_session_profile)
+        worker.failed.connect(self._on_session_profile_failed)
+        worker.finished.connect(self._on_profile_worker_done)
+        self._profile_worker = worker
+        worker.start()
+
+    def _apply_session_text(self) -> None:
+        """Header copy only: no network, so a language switch stays free."""
+        session = self._session
+        if session is None:
+            self.session_button.setText(i18n.tr("sign_in"))
+            self.session_button.setToolTip("")
+            return
+        self.session_button.setText(f"@{session['username']}")
+        self.session_button.setToolTip(i18n.tr("profile_tooltip"))
+
+    def _on_session_profile(self, profile: dict, avatar_path: str) -> None:
+        if self._session is None:
+            return
+        pixmap = avatar_pixmap(avatar_path, CHIP_AVATAR)
+        if not pixmap.isNull():
+            self.session_button.setIcon(QIcon(pixmap))
+            self.session_button.setIconSize(pixmap.size())
+
+    def _on_session_profile_failed(self, message: str) -> None:
+        # The header keeps working without the photo: no dialog, no status line.
+        pass
+
+    def _on_profile_worker_done(self) -> None:
+        self._profile_worker = None
+
+    def _reload_session_views(self) -> None:
+        """Re-render everything that shows who is signed in."""
+        for card in self._items.values():
+            card.retranslate()
+        dialog = self._detail_dialog
+        if dialog is not None:
+            dialog.retranslate()
+
+    def _open_session(self) -> None:
+        """The header control: sign in, or see your own Scratch profile."""
+        if self._session is None:
+            dialog = SignInDialog(self)
+            dialog.signed_in.connect(self._on_signed_in)
+            dialog.exec()
+            return
+        dialog = ProfileDialog(self._session["username"], self)
+        dialog.signed_out.connect(self._on_signed_out)
+        dialog.exec()
+
+    def _on_signed_in(self, username: str) -> None:
+        self.status_label.setText(i18n.tr("session_user", name=username))
+        self._refresh_session()
+        self._reload_session_views()
+
+    def _on_signed_out(self) -> None:
+        self._refresh_session()
+        self._reload_session_views()
+
     # Settings -------------------------------------------------------------
 
     def _open_settings(self) -> None:
@@ -704,6 +797,7 @@ class Hub(QWidget):
         self.clones_button.setToolTip(i18n.tr("clones"))
         self._clone_count_label.setToolTip(i18n.tr("clones_active"))
         self.fullscreen_button.setToolTip(i18n.tr("fullscreen"))
+        self._apply_session_text()
         # Window title "Basic Engine Hub" stays untranslated.
         for card in self._items.values():
             card.retranslate()
@@ -1248,7 +1342,7 @@ class Hub(QWidget):
 
     def shutdown(self) -> None:
         self.player.shutdown()
-        for worker in (self._listing, self._download, self._thumbnails):
+        for worker in (self._listing, self._download, self._thumbnails, self._profile_worker):
             if worker is not None and worker.isRunning():
                 worker.requestInterruption()
                 worker.wait(1500)

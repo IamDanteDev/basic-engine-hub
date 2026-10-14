@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from hub import i18n, scratch_api
+from hub import auth, i18n, scratch_api
 
 _MAX_REPLIES = 5
 _COVER_W = 240
@@ -150,9 +150,9 @@ class ProjectDetailDialog(QDialog):
         self.title_label.setWordWrap(True)
         right.addWidget(self.title_label)
 
-        username = self._project.get("username") or ""
-        self.author_label = QLabel(f"@{username}")
+        self.author_label = QLabel()
         self.author_label.setObjectName("detailAuthor")
+        self._refresh_author()
         right.addWidget(self.author_label)
 
         self.stats_label = QLabel()
@@ -355,6 +355,7 @@ class ProjectDetailDialog(QDialog):
         self._description_header.setText(i18n.tr("section_description"))
         self._instructions_header.setText(i18n.tr("section_instructions"))
         self._comments_header.setText(i18n.tr("section_comments"))
+        self._refresh_author()
         self._refresh_stats()
         if self._cover_placeholder:
             self.cover_label.setText(i18n.tr("no_cover"))
@@ -369,6 +370,12 @@ class ProjectDetailDialog(QDialog):
             self._comments_placeholder.setText(i18n.tr("comments_unavailable"))
 
     # Internals ----------------------------------------------------------
+
+    def _refresh_author(self) -> None:
+        """The author line, with the literal `(You)` marker when it is yours."""
+        self.author_label.setText(
+            auth.author_label(self._project.get("username") or "", auth.current_username())
+        )
 
     def _show_no_cover(self) -> None:
         self._cover_placeholder = True
