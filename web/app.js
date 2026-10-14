@@ -129,17 +129,25 @@ async function loadListing() {
 }
 
 async function fetchListingOrFallback() {
+  const failures = [];
   for (const source of ["./api/listing", "./listing.json", "../listing.json"]) {
     try {
       const response = await fetch(source, { cache: "no-store" });
-      if (!response.ok) continue;
+      if (!response.ok) {
+        failures.push(`${source}: HTTP ${response.status}`);
+        continue;
+      }
       const data = await response.json();
-      if (Array.isArray(data)) return data;
-    } catch {
-      // Try the next same-origin source.
+      if (Array.isArray(data)) {
+        report("info", "Fuente del listado cargada.", { source, count: data.length });
+        return data;
+      }
+      failures.push(`${source}: la respuesta JSON no es una lista`);
+    } catch (error) {
+      failures.push(`${source}: ${error.message}`);
     }
   }
-  throw new Error("no listing source available");
+  throw new Error(`No se pudo cargar ninguna fuente del listado. ${failures.join("; ")}`);
 }
 
 /* ---- Menu ----------------------------------------------------------------- */
