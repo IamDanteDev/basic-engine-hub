@@ -224,6 +224,9 @@ class SignInDialog(QDialog):
         self.open_button.setProperty("role", "primary")
         self.open_button.clicked.connect(self._open_project)
         buttons.addWidget(self.open_button)
+        self.verify_button = QPushButton(i18n.tr("auth_verify"))
+        self.verify_button.clicked.connect(self._verify_now)
+        buttons.addWidget(self.verify_button)
         buttons.addStretch(1)
         self.close_button = QPushButton(i18n.tr("close"))
         self.close_button.clicked.connect(self.reject)
@@ -271,6 +274,15 @@ class SignInDialog(QDialog):
     def _on_tokens_failed(self, message: str) -> None:
         self.open_button.setEnabled(False)
         self.status_label.setText(i18n.tr("auth_failed", exc=message))
+
+    def _verify_now(self) -> None:
+        """Check on demand instead of waiting for the next tick."""
+        if not self._tokens.get("privateCode") or time.monotonic() > self._expires_at:
+            # Nothing is pending (or the code expired): ask for a fresh pair.
+            self._request_tokens()
+            return
+        self.status_label.setText(i18n.tr("auth_checking"))
+        self._poll_once()
 
     def _poll_once(self) -> None:
         if self._verify_worker is not None and self._verify_worker.isRunning():

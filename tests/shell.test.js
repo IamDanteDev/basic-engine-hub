@@ -242,6 +242,49 @@ test("every control the menu script looks up exists in the entry point", () => {
   }
 });
 
+/* The sign-in dialog's manual check is an addition, never a replacement: the
+ * button runs the same verification the poll runs, on demand, and the automatic
+ * poll stays exactly where it was. */
+test("the sign-in dialog offers a manual check wired to the same verification", () => {
+  for (const file of ["index.html", "web/index.html"]) {
+    const html = read(file);
+    assert.match(
+      html,
+      /<button id="auth-verify"[^>]*data-i18n="authVerify"[^>]*>/,
+      `${file} must offer the manual verification button, hooked to the table`,
+    );
+  }
+  const app = read("web/app.js");
+  assert.match(
+    app,
+    /authVerifyEl\.addEventListener\("click", verifyNow\)/,
+    "the manual button must be wired to its handler",
+  );
+  assert.match(
+    app,
+    /async function verifyNow\(\)[\s\S]*?await pollSignIn\(\);/,
+    "the manual check must run the same verification the poll runs",
+  );
+  /* The state the button parks on the status line is transient: a check that
+   * finds nothing has to hand the line back to the wait, or the dialog sits on
+   * "Comprobando la sesión…" for the rest of its life. */
+  assert.match(
+    app,
+    /function resumeAuthWaiting\(\) \{\n  if \(authState\.statusKey === "authChecking"\)/,
+    "the manual state must be a state the poll can leave",
+  );
+  const handBacks = [...app.matchAll(/resumeAuthWaiting\(\);/g)].length;
+  assert.ok(
+    handBacks >= 2,
+    `a check that finds nothing must hand the status back (found ${handBacks} hand-backs)`,
+  );
+  assert.match(
+    app,
+    /authState\.poll = setInterval\(pollSignIn, AUTH_POLL_MS\)/,
+    "the button adds a trigger; the automatic poll must stay",
+  );
+});
+
 /* The player page is the third web surface and the desktop shell's bridge. It
  * used to carry a private two-language table (so a French or Portuguese app
  * showed a Spanish or English player); it now asks the shared core. The risks

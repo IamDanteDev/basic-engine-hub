@@ -695,6 +695,7 @@ const authCodeEl = document.getElementById("auth-code");
 const authStatusEl = document.getElementById("auth-status");
 const authOpenEl = document.getElementById("auth-open");
 const authContinueEl = document.getElementById("auth-continue");
+const authVerifyEl = document.getElementById("auth-verify");
 const authStorage = (() => {
   try {
     return window.localStorage;
@@ -702,7 +703,13 @@ const authStorage = (() => {
     return null; /* storage can be blocked; the app then runs signed out */
   }
 })();
-const authState = { tokens: null, poll: null, refresh: null, deadline: 0, statusKey: "" };
+const authState = { tokens: null, poll: null, refresh: null, deadline: 0, statusKey: "", attempts: 0 };
+/* Last HTTP status the service answered for a session request. The core reads a
+ * non-ok answer as "not yet", so the status only survives for the log. */
+let authHttpStatus = 0;
+/* One pending line every N polls: the 15-minute window polls 300 times, and a
+ * line per try would bury every other message in the console. */
+const AUTH_POLL_LOG_EVERY = 5;
 let session = Auth && authStorage ? Auth.readSession(authStorage) : null;
 
 /* Username shown on a card or in the detail dialog, plus the literal "(You)"
@@ -719,8 +726,40 @@ function setAuthStatus(key) {
   if (authStatusEl) authStatusEl.textContent = key ? tr(key) : "";
 }
 
+/* Every sign-in request goes through here, so one wrapper can report the status
+ * of each poll without touching the core. The private code is the handle to the
+ * session, so it never reaches the console: the URL is redacted first. */
+function redactAuthUrl(url) {
+  return String(url).replace(/(\/auth\/verifyToken\/)[^?&]+/, "$1<privateCode>");
+}
+
 function fetchImpl(url) {
-  return fetch(url);
+  const shown = redactAuthUrl(url);
+  const isPoll = shown.includes("/auth/verifyToken/");
+  return fetch(url).then(
+    (response) => {
+      if (isPoll) {
+        /* The pending answer is a 403 on every tick; pollSignIn summarizes it. */
+        authHttpStatus = response.status;
+      } else {
+        report(response.ok ? "info" : "warn", "El servicio de sesión respondió a la petición de código.", {
+          url: shown,
+          status: response.status,
+          ok: response.ok,
+        });
+      }
+      return response;
+    },
+    (error) => {
+      authHttpStatus = 0;
+      report("error", "La petición de sesión no llegó al servicio.", {
+        url: shown,
+        isPoll,
+        error: String((error && error.message) || error),
+      });
+      throw error;
+    }
+  );
 }
 
 function renderSession() {
@@ -760,15 +799,23 @@ function refreshGrid() {
 }
 
 function signOut() {
+  const outgoing = session ? session.username : null;
   if (Auth && authStorage) Auth.clearSession(authStorage);
   session = null;
   renderSession();
   refreshGrid();
+  report("info", "Sesión de Scratch cerrada.", { username: outgoing });
 }
 
 function openAuthDialog(options = {}) {
   if (!Auth || !authDialog) return;
   if (options.method && Auth.isKnownMethod(options.method)) authMethodEl.value = options.method;
+  report("info", "Diálogo de sesión abierto.", {
+    method: authMethodEl.value,
+    authProject: Auth.AUTH_PROJECT_ID,
+    callback: Auth.buildCallbackUrl(location),
+    signedIn: session ? session.username : null,
+  });
   authDialog.showModal();
   updateAuthDialog();
   startSignIn();
@@ -778,9 +825,9 @@ function updateAuthDialog() {
   const method = authMethodEl.value;
   const needsUsername = method === "profile-comment";
   const ready = Boolean(authState.tokens);
-  authUsernameRow.hidden = !needsUsername;
-  authReadyEl.hidden = !ready;
-  if (ready) authCodeEl.textContent = authState.tokens.publicCode || "—";
+  if (authUsernameRow) authUsernameRow.hidden = !needsUsername;
+  if (authReadyEl) authReadyEl.hidden = !ready;
+  if (ready && authCodeEl) authCodeEl.textContent = authState.tokens.publicCode || "—";
 }
 
 function authWaitingKey(method) {
@@ -806,6 +853,7 @@ async function startSignIn() {
   const method = authMethodEl.value;
   const username = authUsernameEl.value.trim();
   if (method === "profile-comment" && !username) {
+    report("warn", "El método de perfil necesita el usuario de Scratch.", { method });
     setAuthStatus("authUsernameRequired");
     return;
   }
@@ -813,6 +861,11 @@ async function startSignIn() {
   authState.tokens = null;
   updateAuthDialog();
   setAuthStatus("authRequesting");
+  report("info", "Pidiendo un código de acceso al servicio de sesión.", {
+    method,
+    authProject: Auth.AUTH_PROJECT_ID,
+    callback: Auth.buildCallbackUrl(location),
+  });
   try {
     const tokens = await Auth.requestTokens(fetchImpl, {
       redirect: Auth.buildCallbackUrl(location),
@@ -822,24 +875,51 @@ async function startSignIn() {
     if (!authDialog.open) return;
     authState.tokens = tokens;
     authState.deadline = Date.now() + AUTH_WINDOW_MS;
+    authState.attempts = 0;
+    authHttpStatus = 0; /* a new attempt must not report the previous one's status */
     updateAuthDialog();
     setAuthStatus(authWaitingKey(method));
     authState.poll = setInterval(pollSignIn, AUTH_POLL_MS);
+    report("info", "Código de acceso recibido: la sesión se sondea hasta que el servicio la confirme.", {
+      publicCode: tokens.publicCode,
+      method: tokens.method,
+      authProject: tokens.authProject,
+      redirectLocation: tokens.redirectLocation,
+      pollMs: AUTH_POLL_MS,
+      windowMs: AUTH_WINDOW_MS,
+      codeTtlMs: Auth.AUTH_CODE_TTL_MS,
+    });
     /* The service expires a token pair after 5 minutes; refresh before that. */
     authState.refresh = setTimeout(() => {
       if (authDialog.open && authState.tokens) startSignIn();
     }, Auth.AUTH_CODE_TTL_MS);
   } catch (error) {
-    report("error", "No se pudo generar el código de acceso.", error);
+    report("error", "No se pudo generar el código de acceso.", {
+      method,
+      callback: Auth.buildCallbackUrl(location),
+      error, /* the Error itself, so the console keeps its stack */
+    });
     setAuthStatus("authRequestFailed");
   }
 }
 
+/* The manual check parks the status line on "checking"; when the service still
+ * has nothing to confirm, the wait has to be visible again instead of frozen
+ * there for the rest of the dialog's life. */
+function resumeAuthWaiting() {
+  if (authState.statusKey === "authChecking") setAuthStatus(authWaitingKey(authMethodEl.value));
+}
+
 async function pollSignIn() {
   if (!authState.tokens || !authState.tokens.privateCode) return;
+  authState.attempts += 1;
   if (Date.now() > authState.deadline) {
     stopAuthTimers();
     setAuthStatus("authExpired");
+    report("warn", "La ventana de la sesión expiró sin que el servicio confirmara nada.", {
+      attempts: authState.attempts,
+      lastHttpStatus: authHttpStatus,
+    });
     return;
   }
   let result;
@@ -847,22 +927,69 @@ async function pollSignIn() {
     result = await Auth.verifyCode(fetchImpl, { privateCode: authState.tokens.privateCode });
   } catch (error) {
     report("warn", "El sondeo de la sesión falló; se reintenta en el próximo ciclo.", error);
+    resumeAuthWaiting();
     return;
   }
-  if (!result.valid) return;
+  if (!result.valid) {
+    /* The first try and then every fifth: `httpStatus` tells whether the service
+     * is answering "not yet" (403) or the request never reached it (0). */
+    if (authState.attempts % AUTH_POLL_LOG_EVERY === 1) {
+      report("info", "Sondeo de la sesión: el servicio todavía no confirma el código.", {
+        attempt: authState.attempts,
+        lastHttpStatus: authHttpStatus,
+        remainingMs: Math.max(0, authState.deadline - Date.now()),
+      });
+    }
+    resumeAuthWaiting();
+    return;
+  }
   if (!Auth.isTrustedRedirect(result.redirect, Auth.buildCallbackUrl(location))) {
     stopAuthTimers();
     authState.tokens = null;
-    report("warn", "La confirmación apunta a otro sitio; se descarta.", { redirect: result.redirect });
+    report("warn", "La confirmación apunta a otro sitio; se descarta.", {
+      redirect: result.redirect,
+      expected: Auth.buildCallbackUrl(location),
+    });
     setAuthStatus("authRejected");
     return;
   }
+  report("info", "El servicio confirmó la identidad; guardando la sesión.", {
+    username: result.username,
+    method: authMethodEl.value,
+    attempts: authState.attempts,
+    redirect: result.redirect,
+  });
   completeSignIn(result.username, authMethodEl.value);
+}
+
+/* The manual check: don't wait for the next poll tick. With nothing live to
+ * check (no code yet, or the dialog already gave up on the window) it asks the
+ * service for a fresh pair instead of doing nothing. */
+async function verifyNow() {
+  if (!authState.tokens || !authState.tokens.privateCode || Date.now() > authState.deadline) {
+    report("info", "Verificación manual sin código vivo: se pide uno nuevo.", {
+      hadTokens: Boolean(authState.tokens),
+      expired: Boolean(authState.tokens) && Date.now() > authState.deadline,
+    });
+    await startSignIn();
+    return;
+  }
+  report("info", "Verificación manual pedida por el usuario.", {
+    method: authMethodEl.value,
+    attempts: authState.attempts,
+  });
+  setAuthStatus("authChecking");
+  await pollSignIn();
 }
 
 function completeSignIn(username, method) {
   stopAuthTimers();
   if (!Auth || !authStorage || !username) {
+    report("warn", "La sesión no se pudo guardar.", {
+      core: Boolean(Auth),
+      storage: Boolean(authStorage),
+      username: Boolean(username),
+    });
     setAuthStatus("authCallbackFailed");
     return;
   }
@@ -871,7 +998,7 @@ function completeSignIn(username, method) {
   if (authDialog && authDialog.open) authDialog.close();
   renderSession();
   refreshGrid();
-  report("info", "Sesión de Scratch iniciada.", { username });
+  report("info", "Sesión de Scratch iniciada.", { username, method: method || "cloud" });
 }
 
 /* Fallback path: the service sent the browser back with ?privateCode=... */
@@ -881,6 +1008,9 @@ async function handleAuthCallback() {
   if (!privateCode) return;
   stripAuthQuery(); /* never leave the code in the address bar */
   setAuthStatus("authChecking");
+  report("info", "El servicio devolvió el navegador con un código en la URL.", {
+    callback: Auth.buildCallbackUrl(location),
+  });
   let result = null;
   try {
     result = await Auth.verifyCode(fetchImpl, { privateCode });
@@ -888,10 +1018,15 @@ async function handleAuthCallback() {
     report("warn", "No se pudo verificar el código que llegó en la URL.", error);
   }
   if (result && result.valid && Auth.isTrustedRedirect(result.redirect, Auth.buildCallbackUrl(location))) {
+    report("info", "El código de la URL confirmó la sesión.", { username: result.username });
     completeSignIn(result.username, "cloud");
     return;
   }
-  report("warn", "El código de la URL no produjo una sesión válida.");
+  report("warn", "El código de la URL no produjo una sesión válida.", {
+    valid: Boolean(result && result.valid),
+    redirect: result ? result.redirect : null,
+    expected: Auth.buildCallbackUrl(location),
+  });
   setAuthStatus("authCallbackFailed");
 }
 
@@ -905,6 +1040,13 @@ function stripAuthQuery() {
 
 function initAuth() {
   if (!Auth || !sessionEl || !authDialog) {
+    /* The sign-in control is built at runtime, so a missing core or a missing
+     * dialog leaves the page with no visible symptom but no way in either. */
+    report("warn", "El inicio de sesión no se pudo montar.", {
+      core: Boolean(Auth),
+      session: Boolean(sessionEl),
+      dialog: Boolean(authDialog),
+    });
     if (sessionEl) sessionEl.hidden = true;
     return;
   }
@@ -914,13 +1056,19 @@ function initAuth() {
     stopAuthTimers();
     authState.tokens = null;
     updateAuthDialog();
-    if (authMethodEl.value === "profile-comment") setAuthStatus("authUsernameRequired");
-    else startSignIn();
+    startSignIn();
   });
-  authUsernameEl.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") startSignIn();
-  });
-  authContinueEl.addEventListener("click", startSignIn);
+  // username row removed
+  if (authUsernameEl) {
+    authUsernameEl.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") startSignIn();
+    });
+  }
+  if (authContinueEl) {
+    authContinueEl.addEventListener("click", startSignIn);
+    authContinueEl.hidden = true;
+  }
+  authVerifyEl.addEventListener("click", verifyNow);
   document.getElementById("auth-copy").addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(authCodeEl.textContent);

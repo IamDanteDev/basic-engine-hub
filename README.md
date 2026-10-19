@@ -79,9 +79,12 @@ as the web version (https://scratch.mit.edu/projects/1391621033/), with the
 same three methods (`cloud`, `comment`, `profile-comment`). The flow runs in
 your own browser: the app asks the service for a code pair, shows the public
 code, opens the auth project with your default browser and polls
-`/auth/verifyToken/<privateCode>` until the service confirms the username. There
-is no embedded browser and no local callback server, so no port is opened and no
-Scratch password ever reaches the app.
+`/auth/verifyToken/<privateCode>` until the service confirms the username. The
+dialog also has a **Verify** button that runs that check on demand instead of
+waiting for the next poll; when the code is gone or has expired it asks the
+service for a fresh pair instead. There is no embedded browser and no local
+callback server, so no port is opened and no Scratch password ever reaches the
+app.
 
 Only the username is kept, in `settings.json` under the `scratch_user` key; the
 private code is never persisted. The session is identity only: it carries no
@@ -127,9 +130,11 @@ on GitHub Pages and from the local server, with no proxy.
 
 `web/auth.js` asks the service for a code pair, the dialog shows the public
 code and links to the auth project, and the page polls
-`/auth/verifyToken/<privateCode>` until the service confirms the username. Only
-the username is kept in `localStorage`; the private code is never persisted,
-and a confirmation that points at another site is rejected.
+`/auth/verifyToken/<privateCode>` until the service confirms the username. A
+**Verify** button runs that same check on demand, and asks for a fresh pair when
+there is nothing live to check. Only the username is kept in `localStorage`; the
+private code is never persisted, and a confirmation that points at another site
+is rejected.
 
 The session is identity only: the header shows who is signed in, and the author
 name of your own projects gets `(You)`. The auth project id and the supported

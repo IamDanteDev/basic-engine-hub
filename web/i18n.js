@@ -156,6 +156,7 @@
       authCodeLabel: "Código de acceso",
       authCopy: "Copiar código",
       authOpen: "Abrir el proyecto en Scratch",
+      authVerify: "Verificar",
       authChecking: "Comprobando la sesión…",
       authRequesting: "Generando tu código…",
       authWaitingProject:
@@ -269,6 +270,7 @@
       authCodeLabel: "Sign-in code",
       authCopy: "Copy code",
       authOpen: "Open the project in Scratch",
+      authVerify: "Verify",
       authChecking: "Checking the session…",
       authRequesting: "Generating your code…",
       authWaitingProject:
@@ -383,6 +385,7 @@
       authCodeLabel: "Code de connexion",
       authCopy: "Copier le code",
       authOpen: "Ouvrir le projet dans Scratch",
+      authVerify: "Vérifier",
       authChecking: "Vérification de la session…",
       authRequesting: "Génération de ton code…",
       authWaitingProject:
@@ -498,6 +501,7 @@
       authCodeLabel: "Código de acesso",
       authCopy: "Copiar código",
       authOpen: "Abrir o projeto no Scratch",
+      authVerify: "Verificar",
       authChecking: "Verificando a sessão…",
       authRequesting: "Gerando seu código…",
       authWaitingProject:
