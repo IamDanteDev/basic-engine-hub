@@ -115,9 +115,9 @@ class TokensUrlTests(unittest.TestCase):
         url = auth.build_tokens_url(
             "https://example.com/app", method="profile-comment", username=" narutoxd123 "
         )
-        self.assertEqual(
-            dict(urllib.parse.parse_qsl(url.split("?", 1)[1]))["username"], "narutoxd123"
-        )
+        query = dict(urllib.parse.parse_qsl(url.split("?", 1)[1]))
+        self.assertEqual(query["username"], "narutoxd123")
+        self.assertEqual(query["method"], "profile-comment")
 
     def test_the_other_methods_never_send_a_username(self):
         url = auth.build_tokens_url(
