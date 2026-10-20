@@ -6,3 +6,6 @@ __pycache__/
 # Local runtime state
 settings.json
 settings.json.tmp
+
+# Agent tooling (local skill registry, never published)
+.atl/
