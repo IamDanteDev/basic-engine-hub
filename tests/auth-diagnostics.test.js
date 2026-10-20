@@ -90,3 +90,16 @@ test("the first pending poll logs, then every fifth", () => {
   assert.equal(1 % every, 1, "attempt 1 falls on the logged slot");
   assert.equal(Number((APP.match(/AUTH_POLL_MS\s*=\s*(\d+)/) || [])[1]), 3000);
 });
+
+/* The PenguinMod sign-in polls the public profile endpoint on the very same
+ * cadence. Its url carries no secret, but it is still one request every three
+ * seconds, so it belongs to the silent class: the summary line is pollSignIn's
+ * job, exactly like the service poll. */
+test("a PenguinMod profile poll is silent too", async () => {
+  const logged = [];
+  const wrap = loadDiagnostics(() => Promise.resolve({ ok: true, status: 200 }), (...args) => logged.push(args));
+  const response = await wrap.fetchImpl("https://projects.penguinmod.com/api/v1/users/profile?target=dante");
+  assert.equal(response.status, 200);
+  assert.equal(wrap.status(), 200, "the poll status must be kept for the summary line");
+  assert.deepEqual(logged, [], "a poll must not log on its own: that would be one line every 3 seconds");
+});

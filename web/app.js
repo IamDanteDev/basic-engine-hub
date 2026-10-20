@@ -688,7 +688,10 @@ const AUTH_WINDOW_MS = 15 * 60 * 1000; /* how long the dialog keeps trying */
 const sessionEl = document.getElementById("session");
 const authDialog = document.getElementById("auth-dialog");
 const authMethodEl = document.getElementById("auth-method");
+const authMethodIconEl = document.getElementById("auth-method-icon");
+const authIntroEl = document.getElementById("auth-intro");
 const authUsernameRow = document.getElementById("auth-username-row");
+const authUsernameLabelEl = document.getElementById("auth-username-label");
 const authUsernameEl = document.getElementById("auth-username");
 const authReadyEl = document.getElementById("auth-ready");
 const authCodeEl = document.getElementById("auth-code");
@@ -696,6 +699,10 @@ const authStatusEl = document.getElementById("auth-status");
 const authOpenEl = document.getElementById("auth-open");
 const authContinueEl = document.getElementById("auth-continue");
 const authVerifyEl = document.getElementById("auth-verify");
+/* The two service icons the method selector shows beside itself (S8). They are
+ * shared art, so they go through assetUrl like every other repository asset. */
+const SCRATCH_ICON = "Logos/S-of-scratch.png";
+const PENGUINMOD_ICON = "Logos/P-of-PenguinMod.png";
 const authStorage = (() => {
   try {
     return window.localStorage;
@@ -713,10 +720,12 @@ const AUTH_POLL_LOG_EVERY = 5;
 let session = Auth && authStorage ? Auth.readSession(authStorage) : null;
 
 /* Username shown on a card or in the detail dialog, plus the literal "(You)"
- * when the project belongs to the signed-in user. */
+ * when the project belongs to the signed-in user. Only a Scratch session may
+ * claim a Scratch project: a PenguinMod identity proves nothing here. */
 function authorLabel(username) {
   if (!username) return "";
-  return Auth ? Auth.authorLabel(username, session ? session.username : "") : `@${username}`;
+  const own = Auth && session && Auth.claimsScratchProjects(session) ? session.username : "";
+  return Auth ? Auth.authorLabel(username, own) : `@${username}`;
 }
 
 /* The status line is kept as a translation key, not as text, so a language
@@ -735,7 +744,11 @@ function redactAuthUrl(url) {
 
 function fetchImpl(url) {
   const shown = redactAuthUrl(url);
-  const isPoll = shown.includes("/auth/verifyToken/");
+  /* Both routes are polled while a sign-in waits: the service's verification
+   * and the profile bio the PenguinMod code is pasted into. The profile url
+   * carries no secret, but it is still one request every three seconds, so it
+   * belongs to the silent class for the same reason the first one does. */
+  const isPoll = shown.includes("/auth/verifyToken/") || shown.includes("/api/v1/users/profile");
   return fetch(url).then(
     (response) => {
       if (isPoll) {
@@ -773,7 +786,7 @@ function renderSession() {
   if (session) {
     const link = document.createElement("a");
     link.className = "session-user";
-    link.href = `https://scratch.mit.edu/users/${encodeURIComponent(session.username)}/`;
+    link.href = Auth.profileUrl(session);
     link.target = "_blank";
     link.rel = "noopener";
     link.textContent = `@${session.username}`;
@@ -798,13 +811,19 @@ function refreshGrid() {
   if (loaded) render();
 }
 
+/* Which service a session belongs to; the label the copy and the log use. */
+function sessionService(target = session) {
+  return Auth && target && Auth.isPenguinModMethod(target.method) ? "PenguinMod" : "Scratch";
+}
+
 function signOut() {
   const outgoing = session ? session.username : null;
+  const service = sessionService();
   if (Auth && authStorage) Auth.clearSession(authStorage);
   session = null;
   renderSession();
   refreshGrid();
-  report("info", "Sesión de Scratch cerrada.", { username: outgoing });
+  report("info", "Sesión cerrada.", { username: outgoing, service });
 }
 
 function openAuthDialog(options = {}) {
@@ -821,16 +840,52 @@ function openAuthDialog(options = {}) {
   startSignIn();
 }
 
+/* Swap an element's translation key together with its text. Keeping the
+ * attribute in step with the text is what lets i18n.apply() re-translate the
+ * new copy on a language switch instead of restoring the previous key. */
+function swapAuthCopy(element, key) {
+  if (!element) return;
+  element.setAttribute("data-i18n", key);
+  element.textContent = tr(key);
+}
+
+/* The profile page takes the name as ?user=; the /profile/<name> form answers
+ * 404. With no name typed yet the link still has to resolve to something
+ * usable rather than to a profile that does not exist. */
+function penguinModProfileUrl() {
+  const name = authUsernameEl ? authUsernameEl.value.trim() : "";
+  return name ? `${Auth.PENGUINMOD_PROFILE_URL}?user=${encodeURIComponent(name)}` : "https://penguinmod.com/";
+}
+
+/* The dialog speaks two services. Everything that names one of them -- the
+ * icon beside the selector, the intro, the username label and the open link --
+ * is swapped here, so the copy never describes the service the user did not
+ * pick. */
 function updateAuthDialog() {
   const method = authMethodEl.value;
-  const needsUsername = method === "profile-comment";
+  const penguin = Auth ? Auth.isPenguinModMethod(method) : false;
+  const needsUsername = penguin || method === "profile-comment";
   const ready = Boolean(authState.tokens);
   if (authUsernameRow) authUsernameRow.hidden = !needsUsername;
   if (authReadyEl) authReadyEl.hidden = !ready;
   if (ready && authCodeEl) authCodeEl.textContent = authState.tokens.publicCode || "—";
+  if (authMethodIconEl) {
+    /* An <img> inside an <option> is never drawn: the option's content model
+     * is text and the list is painted by the native widget, in every browser.
+     * So the icon sits beside the selector and follows the selection (S8). */
+    authMethodIconEl.src = assetUrl(penguin ? PENGUINMOD_ICON : SCRATCH_ICON);
+    authMethodIconEl.alt = penguin ? "PenguinMod" : "Scratch";
+  }
+  swapAuthCopy(authIntroEl, penguin ? "authIntroPenguinMod" : "authIntro");
+  swapAuthCopy(authUsernameLabelEl, penguin ? "authUsernamePenguinMod" : "authUsernameLabel");
+  if (authOpenEl) {
+    swapAuthCopy(authOpenEl, penguin ? "authEditPenguinMod" : "authOpen");
+    authOpenEl.href = penguin ? penguinModProfileUrl() : Auth.AUTH_PROJECT_URL;
+  }
 }
 
 function authWaitingKey(method) {
+  if (Auth && Auth.isPenguinModMethod(method)) return "authWaitingPenguinMod";
   if (method === "profile-comment") return "authWaitingProfile";
   if (method === "comment") return "authWaitingComment";
   return "authWaitingProject";
@@ -852,6 +907,7 @@ async function startSignIn() {
   if (!Auth) return;
   const method = authMethodEl.value;
   const username = authUsernameEl.value.trim();
+  if (Auth.isPenguinModMethod(method)) return startPenguinModSignIn(username);
   if (method === "profile-comment" && !username) {
     report("warn", "El método de perfil necesita el usuario de Scratch.", { method });
     setAuthStatus("authUsernameRequired");
@@ -903,6 +959,36 @@ async function startSignIn() {
   }
 }
 
+/* The PenguinMod half of the flow (S7): no service is asked for anything, the
+ * code is generated here and the page then reads the user's public profile
+ * until the bio carries it. There is no token TTL to refresh either -- that
+ * rule belongs to the Scratch service -- so the code lives for the whole
+ * window and only the 15-minute deadline ends the wait. */
+function startPenguinModSignIn(username) {
+  if (!username) {
+    report("warn", "El método de bio necesita el usuario de PenguinMod.", { method: Auth.PENGUINMOD_METHOD });
+    setAuthStatus("authUsernameRequiredPenguinMod");
+    return;
+  }
+  stopAuthTimers();
+  authState.tokens = {
+    publicCode: Auth.generateCode((count) => window.crypto.getRandomValues(new Uint8Array(count))),
+    privateCode: null,
+    method: Auth.PENGUINMOD_METHOD,
+  };
+  authState.deadline = Date.now() + AUTH_WINDOW_MS;
+  authState.attempts = 0;
+  authHttpStatus = 0; /* a new attempt must not report the previous one's status */
+  updateAuthDialog();
+  setAuthStatus(authWaitingKey(Auth.PENGUINMOD_METHOD));
+  authState.poll = setInterval(pollSignIn, AUTH_POLL_MS);
+  report("info", "Código de PenguinMod generado en el cliente: la bio del perfil se sondea hasta que aparezca.", {
+    publicCode: authState.tokens.publicCode,
+    pollMs: AUTH_POLL_MS,
+    windowMs: AUTH_WINDOW_MS,
+  });
+}
+
 /* The manual check parks the status line on "checking"; when the service still
  * has nothing to confirm, the wait has to be visible again instead of frozen
  * there for the rest of the dialog's life. */
@@ -911,12 +997,17 @@ function resumeAuthWaiting() {
 }
 
 async function pollSignIn() {
-  if (!authState.tokens || !authState.tokens.privateCode) return;
+  if (!authState.tokens) return;
+  /* Each flow holds different evidence: a private code the service knows, or a
+   * code only this page generated. The tokens remember which, so the verdict
+   * never depends on where the selector happens to point. */
+  const penguin = Auth.isPenguinModMethod(authState.tokens.method);
+  if (!(penguin ? authState.tokens.publicCode : authState.tokens.privateCode)) return;
   authState.attempts += 1;
   if (Date.now() > authState.deadline) {
     stopAuthTimers();
     setAuthStatus("authExpired");
-    report("warn", "La ventana de la sesión expiró sin que el servicio confirmara nada.", {
+    report("warn", "La ventana de la sesión expiró sin que nada confirmara el código.", {
       attempts: authState.attempts,
       lastHttpStatus: authHttpStatus,
     });
@@ -924,17 +1015,31 @@ async function pollSignIn() {
   }
   let result;
   try {
-    result = await Auth.verifyCode(fetchImpl, { privateCode: authState.tokens.privateCode });
+    result = penguin
+      ? await Auth.verifyBio(fetchImpl, { username: authUsernameEl.value.trim(), code: authState.tokens.publicCode })
+      : await Auth.verifyCode(fetchImpl, { privateCode: authState.tokens.privateCode });
   } catch (error) {
     report("warn", "El sondeo de la sesión falló; se reintenta en el próximo ciclo.", error);
     resumeAuthWaiting();
     return;
   }
   if (!result.valid) {
-    /* The first try and then every fifth: `httpStatus` tells whether the service
-     * is answering "not yet" (403) or the request never reached it (0). */
+    if (penguin && result.reason === "not-found") {
+      /* A 404 means the username is wrong or the profile is private, and
+       * neither heals by polling: stop, say which, and keep the code so the
+       * manual check can retry once the user fixes the name. */
+      stopAuthTimers();
+      report("warn", "PenguinMod no devolvió ese perfil: no existe o es privado.", {
+        username: authUsernameEl.value.trim(),
+        lastHttpStatus: authHttpStatus,
+      });
+      setAuthStatus("authPenguinModNotFound");
+      return;
+    }
+    /* The first try and then every fifth: `httpStatus` tells whether anything
+     * is answering at all (0 means the request never reached the endpoint). */
     if (authState.attempts % AUTH_POLL_LOG_EVERY === 1) {
-      report("info", "Sondeo de la sesión: el servicio todavía no confirma el código.", {
+      report("info", "Sondeo de la sesión: todavía no aparece el código.", {
         attempt: authState.attempts,
         lastHttpStatus: authHttpStatus,
         remainingMs: Math.max(0, authState.deadline - Date.now()),
@@ -943,7 +1048,7 @@ async function pollSignIn() {
     resumeAuthWaiting();
     return;
   }
-  if (!Auth.isTrustedRedirect(result.redirect, Auth.buildCallbackUrl(location))) {
+  if (!penguin && !Auth.isTrustedRedirect(result.redirect, Auth.buildCallbackUrl(location))) {
     stopAuthTimers();
     authState.tokens = null;
     report("warn", "La confirmación apunta a otro sitio; se descarta.", {
@@ -953,20 +1058,26 @@ async function pollSignIn() {
     setAuthStatus("authRejected");
     return;
   }
-  report("info", "El servicio confirmó la identidad; guardando la sesión.", {
+  report("info", "Identidad confirmada; guardando la sesión.", {
     username: result.username,
-    method: authMethodEl.value,
+    service: penguin ? "PenguinMod" : "Scratch",
     attempts: authState.attempts,
-    redirect: result.redirect,
+    redirect: result.redirect, /* absent on the PenguinMod path, by construction */
   });
-  completeSignIn(result.username, authMethodEl.value);
+  completeSignIn(result.username, authState.tokens.method);
 }
 
 /* The manual check: don't wait for the next poll tick. With nothing live to
  * check (no code yet, or the dialog already gave up on the window) it asks the
  * service for a fresh pair instead of doing nothing. */
+/* The manual check: don't wait for the next poll tick. With nothing live to
+ * check (no code yet, or the dialog already gave up on the window) it asks for
+ * a fresh code rather than doing nothing. The evidence differs per flow,
+ * exactly as in the poll: a private code, or a code only this page generated. */
 async function verifyNow() {
-  if (!authState.tokens || !authState.tokens.privateCode || Date.now() > authState.deadline) {
+  const penguin = Auth.isPenguinModMethod(authMethodEl.value);
+  const live = authState.tokens && (penguin ? authState.tokens.publicCode : authState.tokens.privateCode);
+  if (!live || Date.now() > authState.deadline) {
     report("info", "Verificación manual sin código vivo: se pide uno nuevo.", {
       hadTokens: Boolean(authState.tokens),
       expired: Boolean(authState.tokens) && Date.now() > authState.deadline,
@@ -998,7 +1109,11 @@ function completeSignIn(username, method) {
   if (authDialog && authDialog.open) authDialog.close();
   renderSession();
   refreshGrid();
-  report("info", "Sesión de Scratch iniciada.", { username, method: method || "cloud" });
+  report("info", "Sesión iniciada.", {
+    username,
+    method: method || "cloud",
+    service: sessionService({ method: method || "cloud" }),
+  });
 }
 
 /* Fallback path: the service sent the browser back with ?privateCode=... */
@@ -1050,7 +1165,8 @@ function initAuth() {
     if (sessionEl) sessionEl.hidden = true;
     return;
   }
-  authOpenEl.href = Auth.AUTH_PROJECT_URL;
+  /* updateAuthDialog() owns the open link and the copy that names a service,
+   * so the href is not seeded here: two owners would drift apart. */
   renderSession();
   authMethodEl.addEventListener("change", () => {
     stopAuthTimers();

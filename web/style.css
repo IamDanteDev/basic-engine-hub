@@ -462,6 +462,23 @@ body.player-open { overflow: hidden; }
 
 .auth-field select:focus, .auth-field input:focus { outline: none; border-color: var(--accent); }
 
+/* The service icon beside the method selector (S8). It sits outside the
+ * <select> because an <option>'s content model is text: no browser draws a
+ * child element there, so the icon follows the selection instead. */
+.auth-method-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auth-method-row select { flex: 1; min-width: 0; }
+
+.method-icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+
 #auth-username-row .btn { margin-bottom: 12px; }
 
 .auth-code {

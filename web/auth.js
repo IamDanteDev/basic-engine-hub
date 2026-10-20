@@ -1,11 +1,11 @@
 "use strict";
 
-/* Basic Engine Hub — Scratch sign-in core (Scratch Auth, custom frontend).
+/* Basic Engine Hub — sign-in core (Scratch Auth plus the PenguinMod bio check).
  *
  * Pure helpers with no DOM and no implicit globals, so the `node --test`
  * suite can exercise every rule. web/app.js owns the DOM wiring.
  *
- * Flow (documented at https://auth.itinerary.eu.org/documentation/introduction,
+ * Scratch flow (documented at https://auth.itinerary.eu.org/documentation/introduction,
  * real spec in Looky1173/Scratch-Auth-Client src/docs/custom-frontend.mdx):
  *   1. GET {AUTH_API_BASE}/auth/getTokens?method=&redirect=<base64>&authProject=
  *      -> {publicCode, privateCode, redirectLocation, method, authProject}
@@ -16,6 +16,11 @@
  * The base64 `redirect` is percent-encoded on the wire. Raw base64 is not safe:
  * a "+" decodes as a space and silently corrupts the URL (evidence L6 in
  * odd/tasks/scratch-auth.md).
+ *
+ * The PenguinMod identity is the second channel, web only (S7 in the same
+ * document): there is no service behind it, the code is pasted into the user's
+ * own profile bio and read back from the public profile endpoint. Its section
+ * below carries the evidence and the limits of what that channel can prove.
  */
 
 const AUTH_API_BASE = "https://auth-api.itinerary.eu.org";
@@ -152,6 +157,10 @@ function authorLabel(username, sessionUsername) {
 }
 
 async function requestTokens(fetchImpl, { apiBase, redirect, method = "cloud", authProject, username = "" } = {}) {
+  if (isPenguinModMethod(method)) {
+    /* Its code is generated in the page; the service must never see it. */
+    throw new Error("profile-bio never reaches the Scratch Auth service");
+  }
   if (String(method) === "profile-comment" && !String(username).trim()) {
     throw new Error("profile-comment requires the Scratch username");
   }
@@ -178,6 +187,112 @@ async function verifyCode(fetchImpl, { apiBase, privateCode } = {}) {
   };
 }
 
+/* ---- PenguinMod identity (profile bio, web only) ---------------------------
+ *
+ * There is no service to ask here. PenguinMod's cloud is TurboWarp's anonymous
+ * cloud and its backend exposes no comments API, so neither can carry a name
+ * worth trusting. The one surface that is public, owner-writable and readable
+ * from the browser is the profile bio, verified live against production:
+ *
+ *   GET https://projects.penguinmod.com/api/v1/users/profile?target=<user>
+ *   -> 200 {"success":true,"username","bio","privateProfile":false,...}, with
+ *      access-control-allow-origin: *, so the browser calls it directly with
+ *      no proxy -- the same condition the Scratch Auth service meets in S5.
+ *   -> 404 {"error":"NotFound"} both for a missing user and for a private
+ *      profile, which the endpoint does not separate: one reason covers both.
+ *
+ * So the code is ours, generated in the page, and the user pastes it into
+ * their own bio. What that proves is exactly "the owner of that profile put
+ * this code there" -- no more: the bio is public, so anyone reading the
+ * profile reads the code. That is enough to label a session, and it is why
+ * this method ships on the web only (S7): in the desktop app it would claim
+ * more than the channel can carry. */
+const PENGUINMOD_API_BASE = "https://projects.penguinmod.com";
+const PENGUINMOD_PROFILE_URL = "https://penguinmod.com/profile";
+const PENGUINMOD_METHOD = "profile-bio";
+/* No 0/O and no 1/I: the code is read off the screen and retyped by hand. 32
+ * symbols also keep 256 % 32 === 0, so the byte-to-symbol mapping is bias-free. */
+const PENGUINMOD_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const PENGUINMOD_CODE_LENGTH = 8;
+
+function isPenguinModMethod(method) {
+  return String(method) === PENGUINMOD_METHOD;
+}
+
+function buildProfileUrl({ apiBase = PENGUINMOD_API_BASE, username = "" } = {}) {
+  const name = String(username).trim();
+  if (!name) throw new Error("profile-bio requires the PenguinMod username");
+  return `${apiBase}/api/v1/users/profile?target=${encodeURIComponent(name)}`;
+}
+
+/* A standalone token: "BEH2345" must not count inside "BEH23456" or "XBEH2345".
+ * Lookbehind would say this in one regex, but Safari only gained it in 16.4 and
+ * this menu runs on whatever family tablet shows up, so the neighbours are
+ * checked by hand. Case-insensitive because a bio pasted from a phone may come
+ * back in another case, and the code carries no case information anyway. */
+function bioHasCode(bio, code) {
+  const haystack = String(bio || "").toLowerCase();
+  const needle = String(code || "").trim().toLowerCase();
+  if (!haystack || !needle) return false;
+  let index = haystack.indexOf(needle);
+  while (index !== -1) {
+    const before = index === 0 ? "" : haystack[index - 1];
+    const after = haystack.slice(index + needle.length, index + needle.length + 1);
+    if (!/[a-z0-9]/.test(before) && !/[a-z0-9]/.test(after)) return true;
+    index = haystack.indexOf(needle, index + 1);
+  }
+  return false;
+}
+
+/* The random source is injected so the test can pin the alphabet and the
+ * length; the browser passes window.crypto.getRandomValues bound to crypto. */
+function generateCode(randomValues) {
+  const bytes = randomValues(PENGUINMOD_CODE_LENGTH);
+  let code = "";
+  for (let index = 0; index < PENGUINMOD_CODE_LENGTH; index += 1) {
+    code += PENGUINMOD_CODE_ALPHABET[bytes[index] % PENGUINMOD_CODE_ALPHABET.length];
+  }
+  return code;
+}
+
+async function verifyBio(fetchImpl, { apiBase, username, code } = {}) {
+  const response = await fetchImpl(buildProfileUrl({ apiBase, username }));
+  if (!response || !response.ok) {
+    /* 404 means missing user or private profile; anything else is the request
+     * failing, which the caller retries rather than reports as a verdict. */
+    return {
+      valid: false,
+      username: null,
+      reason: response && response.status === 404 ? "not-found" : "unreachable",
+    };
+  }
+  const data = await response.json();
+  const asked = String(username || "").trim().toLowerCase();
+  const found = data && typeof data.username === "string" ? data.username.trim() : "";
+  /* The endpoint echoes the user it looked up. Anything else is not the
+   * identity we asked about, and must never become our session. */
+  if (!found || found.toLowerCase() !== asked) return { valid: false, username: null, reason: "mismatch" };
+  if (!bioHasCode(data.bio, code)) return { valid: false, username: null, reason: "pending" };
+  return { valid: true, username: found, reason: "" };
+}
+
+/* Where the session chip points. A session stored before this method existed
+ * carries an empty method and stays a Scratch one. */
+function profileUrl(session) {
+  const username = String(session?.username || "").trim();
+  if (!username) return "";
+  if (isPenguinModMethod(session.method)) {
+    return `${PENGUINMOD_PROFILE_URL}?user=${encodeURIComponent(username)}`;
+  }
+  return `https://scratch.mit.edu/users/${encodeURIComponent(username)}/`;
+}
+
+/* A PenguinMod session proves a PenguinMod identity, so it must never earn the
+ * "(You)" marker on a Scratch project, however alike the two names look. */
+function claimsScratchProjects(session) {
+  return Boolean(session) && !isPenguinModMethod(session.method);
+}
+
 const AuthCore = {
   AUTH_API_BASE,
   AUTH_PROJECT_ID,
@@ -185,6 +300,11 @@ const AuthCore = {
   AUTH_METHODS,
   AUTH_SESSION_KEY,
   AUTH_CODE_TTL_MS,
+  PENGUINMOD_API_BASE,
+  PENGUINMOD_PROFILE_URL,
+  PENGUINMOD_METHOD,
+  PENGUINMOD_CODE_ALPHABET,
+  PENGUINMOD_CODE_LENGTH,
   isKnownMethod,
   base64Encode,
   base64Decode,
@@ -201,6 +321,13 @@ const AuthCore = {
   authorLabel,
   requestTokens,
   verifyCode,
+  isPenguinModMethod,
+  buildProfileUrl,
+  bioHasCode,
+  generateCode,
+  verifyBio,
+  profileUrl,
+  claimsScratchProjects,
 };
 
 if (typeof module !== "undefined" && module.exports) module.exports = AuthCore;

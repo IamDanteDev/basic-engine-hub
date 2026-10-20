@@ -173,6 +173,17 @@
       authExpired: "El código venció. Cancelá y volvé a intentar.",
       authCallbackFailed: "No se pudo confirmar la sesión. Iniciá sesión de nuevo.",
 
+      /* PenguinMod sign-in (profile bio), web only */
+      authMethodPenguinMod: "Pegar el código en tu bio de PenguinMod",
+      authIntroPenguinMod:
+        "Vas a recibir un código. Pegalo en la bio de tu perfil de PenguinMod y volvé a esta pestaña; la leemos nosotros.",
+      authWaitingPenguinMod:
+        "Pegá el código en la bio de tu perfil de PenguinMod y volvé a esta pestaña. Esperando la confirmación…",
+      authUsernamePenguinMod: "Tu usuario de PenguinMod",
+      authUsernameRequiredPenguinMod: "Escribí tu usuario de PenguinMod y tocá Continuar.",
+      authEditPenguinMod: "Editar tu bio en PenguinMod",
+      authPenguinModNotFound: "No encontré ese usuario de PenguinMod, o su perfil es privado.",
+
       /* Player page (web/player.html), which the desktop shell embeds too */
       selectProject: "Elige un proyecto",
       errorPrefix: "Error: ",
@@ -286,6 +297,17 @@
       authRejected: "The confirmation does not belong to this site. Sign-in was cancelled.",
       authExpired: "The code expired. Cancel and try again.",
       authCallbackFailed: "The session could not be confirmed. Sign in again.",
+
+      /* PenguinMod sign-in (profile bio), web only */
+      authMethodPenguinMod: "Paste the code in your PenguinMod bio",
+      authIntroPenguinMod:
+        "You will get a code. Paste it in your PenguinMod profile bio and come back to this tab; we read it back.",
+      authWaitingPenguinMod:
+        "Paste the code in your PenguinMod profile bio and come back to this tab. Waiting for confirmation…",
+      authUsernamePenguinMod: "Your PenguinMod username",
+      authUsernameRequiredPenguinMod: "Enter your PenguinMod username and press Continue.",
+      authEditPenguinMod: "Edit your PenguinMod bio",
+      authPenguinModNotFound: "That PenguinMod user was not found, or their profile is private.",
 
       /* Player page (web/player.html), which the desktop shell embeds too */
       selectProject: "Select a project",
@@ -404,6 +426,17 @@
       authExpired: "Le code a expiré. Annule et réessaie.",
       authCallbackFailed: "Impossible de confirmer la session. Reconnecte-toi.",
 
+      /* PenguinMod sign-in (profile bio), web only */
+      authMethodPenguinMod: "Coller le code dans ta bio PenguinMod",
+      authIntroPenguinMod:
+        "Tu recevras un code. Colle-le dans la bio de ton profil PenguinMod et reviens sur cet onglet ; on la relira.",
+      authWaitingPenguinMod:
+        "Colle le code dans la bio de ton profil PenguinMod et reviens sur cet onglet. Confirmation en attente…",
+      authUsernamePenguinMod: "Ton nom d'utilisateur PenguinMod",
+      authUsernameRequiredPenguinMod: "Écris ton nom d'utilisateur PenguinMod et appuie sur Continuer.",
+      authEditPenguinMod: "Modifier ta bio PenguinMod",
+      authPenguinModNotFound: "Cet utilisateur PenguinMod est introuvable, ou son profil est privé.",
+
       /* Player page (web/player.html), which the desktop shell embeds too */
       selectProject: "Choisis un projet",
       errorPrefix: "Erreur : ",
@@ -519,6 +552,17 @@
         "A confirmação não corresponde a este site. A entrada foi cancelada.",
       authExpired: "O código expirou. Cancele e tente de novo.",
       authCallbackFailed: "Não foi possível confirmar a sessão. Entre de novo.",
+
+      /* PenguinMod sign-in (profile bio), web only */
+      authMethodPenguinMod: "Colar o código na sua bio do PenguinMod",
+      authIntroPenguinMod:
+        "Você vai receber um código. Cole-o na bio do seu perfil do PenguinMod e volte a esta aba; nós a relermos.",
+      authWaitingPenguinMod:
+        "Cole o código na bio do seu perfil do PenguinMod e volte a esta aba. Aguardando a confirmação…",
+      authUsernamePenguinMod: "Seu usuário do PenguinMod",
+      authUsernameRequiredPenguinMod: "Escreva seu usuário do PenguinMod e toque em Continuar.",
+      authEditPenguinMod: "Editar sua bio do PenguinMod",
+      authPenguinModNotFound: "Esse usuário do PenguinMod não foi encontrado, ou o perfil é privado.",
 
       /* Player page (web/player.html), which the desktop shell embeds too */
       selectProject: "Escolha um projeto",

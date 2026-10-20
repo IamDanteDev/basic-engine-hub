@@ -120,21 +120,25 @@
       <h2 id="auth-title" data-i18n="authTitle">Iniciar sesión con Scratch</h2>
       <button id="auth-close" class="btn" type="button" data-i18n="cancel">Cancelar</button>
     </div>
-    <p class="auth-intro" data-i18n="authIntro">
+    <p id="auth-intro" class="auth-intro" data-i18n="authIntro">
       Vas a recibir un código. Escribilo en el proyecto de autenticación de Scratch (o dejalo en un
       comentario) y volvé a esta pestaña: la sesión se confirma sola.
     </p>
     <label class="auth-field" for="auth-method">
       <span data-i18n="authMethodLabel">Método</span>
-      <select id="auth-method">
-        <option value="cloud" data-i18n="authMethodCloud">Escribir el código en el proyecto</option>
-        <option value="comment" data-i18n="authMethodComment">Comentar el código en el proyecto</option>
-        <option value="profile-comment" data-i18n="authMethodProfile">Comentar el código en tu perfil</option>
-      </select>
+      <span class="auth-method-row">
+        <img id="auth-method-icon" class="method-icon" src="Assets/Logos/S-of-scratch.png" alt="" width="20" height="20">
+        <select id="auth-method">
+          <option value="cloud" data-i18n="authMethodCloud">Escribir el código en el proyecto</option>
+          <option value="comment" data-i18n="authMethodComment">Comentar el código en el proyecto</option>
+          <option value="profile-comment" data-i18n="authMethodProfile">Comentar el código en tu perfil</option>
+          <option value="profile-bio" data-i18n="authMethodPenguinMod">Pegar el código en tu bio de PenguinMod</option>
+        </select>
+      </span>
     </label>
     <div id="auth-username-row" hidden>
       <label class="auth-field" for="auth-username">
-        <span data-i18n="authUsernameLabel">Tu usuario de Scratch</span>
+        <span id="auth-username-label" data-i18n="authUsernameLabel">Tu usuario de Scratch</span>
         <input id="auth-username" type="text" autocomplete="off" spellcheck="false" placeholder="usuario" data-i18n-placeholder="authUsernamePlaceholder">
       </label>
       <button id="auth-continue" class="btn btn-primary" type="button" data-i18n="authContinue">Continuar</button>
