@@ -33,6 +33,14 @@ class WebServerTests(unittest.TestCase):
             urlopen(f"{self.base_url}/api/download/../../settings")
         self.assertEqual(error.exception.code, 404)
 
+    def test_health_route_answers_the_probes(self):
+        # Something polls the port for a health check while the server runs, and
+        # without this route every probe lands in the log as a 404.
+        with urlopen(f"{self.base_url}/health") as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.headers.get_content_type(), "application/json")
+            self.assertEqual(json.loads(response.read()), {"status": "ok"})
+
     def test_detail_api_returns_json(self):
         detail = {"id": 42, "title": "Test", "stats": {"views": 7}}
         with patch("web.serve.scratch_api.fetch_project_detail", return_value=detail):

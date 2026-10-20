@@ -51,6 +51,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):  # noqa: N802 - http.server API name
         path = urlsplit(self.path).path
+        if path == "/health":
+            self._serve_health()
+            return
         if path == "/sw.js":
             self._serve_root_script()
             return
@@ -69,6 +72,11 @@ class Handler(SimpleHTTPRequestHandler):
                 self._serve_project_action(path[len(route):], action)
                 return
         super().do_GET()
+
+    def _serve_health(self) -> None:
+        # Something probes this port for a liveness check while the server
+        # runs; without this route every probe lands in the log as a 404.
+        self._send_json({"status": "ok"})
 
     def _serve_root_script(self) -> None:
         script = PROJECT_ROOT / "sw.js"
